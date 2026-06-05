@@ -3,7 +3,6 @@ import { Inter, Playfair_Display } from 'next/font/google'
 import './globals.css'
 import { IframeLoggerInit } from '@/components/IframeLoggerInit'
 import ClientProviders from '@/components/ClientProviders'
-import { SSOGuard } from '@/components/SSOGuard'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
 const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-serif', display: 'swap', weight: ['500', '600', '700'] })
@@ -24,11 +23,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${playfair.variable}`}>
       <body className={inter.className} suppressHydrationWarning>
         <IframeLoggerInit />
-        <SSOGuard>
-          <ClientProviders>
-            {children}
-          </ClientProviders>
-        </SSOGuard>
+        <ClientProviders>
+          {children}
+        </ClientProviders>
       </body>
     </html>
   )

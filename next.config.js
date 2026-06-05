@@ -8,17 +8,9 @@ const nextConfig = {
     pagesBufferLength: 5,
   },
 
-  // Optimize for faster builds
-  swcMinify: true,
-
   // Reduce build time by skipping type checking (run separately)
   typescript: {
     ignoreBuildErrors: true,
-  },
-
-  // Skip ESLint during builds (run separately)
-  eslint: {
-    ignoreDuringBuilds: true,
   },
 
   // Optimize images
@@ -26,14 +18,12 @@ const nextConfig = {
     unoptimized: true,
   },
 
+  // pdf-parse / pdfjs-dist load workers via dynamic import that the bundler
+  // can't statically analyze. Marking them as server-external skips bundling.
+  serverExternalPackages: ['pdf-parse', 'pdfjs-dist'],
+
   // Enable experimental features for faster dev
   experimental: {
-    // pdf-parse pulls in pdfjs-dist, which loads its worker via dynamic
-    // import() that webpack can't statically analyze (throws "Cannot find
-    // module as expression is too dynamic" at runtime in API routes).
-    // Marking these as server-external skips bundling and lets Node resolve
-    // them at runtime, where the dynamic imports work fine.
-    serverComponentsExternalPackages: ['pdf-parse', 'pdfjs-dist'],
     // Optimize package imports for faster builds
     optimizePackageImports: [
       'lucide-react',
