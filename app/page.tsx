@@ -223,8 +223,13 @@ export default function Page() {
         {/* Command palette */}
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} onCallAgent={onChat} loading={loading} />
 
-        {/* Brand onboarding modal — auto-opens on first load when no BrandProfile exists */}
-        <BrandOnboardingModal open={brandModalOpen} onOpenChange={setBrandModalOpen} />
+        {/* Brand onboarding modal — only mounted when actually open. Leaving Radix Dialog
+            mounted with open={false} can still leak `pointer-events: none` onto <body> if its
+            open→close transition races during initial render, which is what made every other
+            button on the page feel dead. Conditional mount avoids the leak entirely. */}
+        {brandModalOpen && (
+          <BrandOnboardingModal open={brandModalOpen} onOpenChange={setBrandModalOpen} />
+        )}
       </div>
     </ErrorBoundary>
   )
