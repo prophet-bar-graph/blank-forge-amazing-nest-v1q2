@@ -1,0 +1,52 @@
+{
+  "agent_name": "Vusion Refine Agent",
+  "agent_id": "6a1c6cc07baa3366ce92da89",
+  "description": "Vusion brand-grounded REVIEW agent. Produces improved_copy, lens-tagged changes, and dual scorecards (original + improved) with the always-update + strict-greater scoring rules.",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": false,
+  "response_schema": {
+    "mode": "string",
+    "response": "string",
+    "data": {
+      "improved_copy": "string",
+      "changes": [
+        {
+          "lens": "string",
+          "note": "string"
+        }
+      ],
+      "scorecard": {
+        "voice": { "score": "integer", "rationale": "string" },
+        "messaging": { "score": "integer", "rationale": "string" },
+        "strategy": { "score": "integer", "rationale": "string" }
+      },
+      "improved_scorecard": {
+        "voice": { "score": "integer", "rationale": "string" },
+        "messaging": { "score": "integer", "rationale": "string" },
+        "strategy": { "score": "integer", "rationale": "string" }
+      }
+    }
+  },
+  "example_response": {
+    "mode": "review",
+    "response": "Brief recap and a Three-Lens Scorecard summary. The structured data carries the improved copy, lens-tagged change notes, and both scorecards.",
+    "data": {
+      "improved_copy": "Bring shoppers, associates, and inventory onto a single, unified ecosystem. Vusion's Connected Commerce platform turns in-store signals into action.",
+      "changes": [
+        { "lens": "voice", "note": "Replaced passive construction with active first-person to lean into the Proactive Partner persona." },
+        { "lens": "messaging", "note": "Surfaced the 'A Unified Ecosystem' supporting message earlier in the sentence." }
+      ],
+      "scorecard": {
+        "voice":     { "score": 64, "rationale": "Tone reads vendor-y, not partner-led." },
+        "messaging": { "score": 70, "rationale": "Key theme present but buried behind feature description." },
+        "strategy":  { "score": 62, "rationale": "Promise of measurable growth is implicit, not stated." }
+      },
+      "improved_scorecard": {
+        "voice":     { "score": 78, "rationale": "Active partner-led phrasing now leads." },
+        "messaging": { "score": 82, "rationale": "Unified Ecosystem pillar surfaces at the start." },
+        "strategy":  { "score": 75, "rationale": "Connection to Connected Commerce promise is now explicit." }
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "agent_name": "Vusion Compose Agent",
+  "agent_id": "6a1c6cbb8886862ba01d9792",
+  "description": "Vusion brand-grounded WRITE agent. Emits three on-brand copy variations with Hook/Solution/Story differentiators and per-lens integer scores. Narrow schema, low latency.",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": false,
+  "response_schema": {
+    "mode": "string",
+    "response": "string",
+    "data": {
+      "variations": [
+        {
+          "label": "string",
+          "differentiator": "string",
+          "copy": "string",
+          "scores": {
+            "voice": "integer",
+            "messaging": "integer",
+            "strategy": "integer"
+          }
+        }
+      ]
+    }
+  },
+  "example_response": {
+    "mode": "write",
+    "response": "Three on-brand options for the requested channel + audience, followed by a Three-Lens Breakdown of which Strategy principle, Messaging theme, and Voice choices drove the copy.",
+    "data": {
+      "variations": [
+        {
+          "label": "Option 1",
+          "differentiator": "Hook-led",
+          "copy": "What if your store could turn every aisle into a conversation? With Vusion's Connected Commerce platform, live signals become the moments shoppers and associates feel.",
+          "scores": { "voice": 82, "messaging": 78, "strategy": 80 }
+        },
+        {
+          "label": "Option 2",
+          "differentiator": "Solution-led",
+          "copy": "Bring shoppers, associates, and inventory onto a single, unified ecosystem. Vusion's Connected Commerce solutions turn in-store signals into measurable growth.",
+          "scores": { "voice": 76, "messaging": 84, "strategy": 79 }
+        },
+        {
+          "label": "Option 3",
+          "differentiator": "Story-led",
+          "copy": "Picture Tuesday at 4pm: shelves restocked before a gap appears, prices updated in seconds, associates freed to help shoppers. That is Connected Commerce in motion.",
+          "scores": { "voice": 80, "messaging": 75, "strategy": 78 }
+        }
+      ]
+    }
+  }
+}

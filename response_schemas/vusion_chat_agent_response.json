@@ -1,0 +1,16 @@
+{
+  "agent_name": "Vusion Chat Agent",
+  "agent_id": "6a1c6cc2df4381b939d7a454",
+  "description": "Vusion brand-grounded CHAT agent. Free-form Q&A about voice, messaging, and verbal strategy. Slim two-field schema — no structured data block.",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": false,
+  "response_schema": {
+    "mode": "string",
+    "response": "string"
+  },
+  "example_response": {
+    "mode": "chat",
+    "response": "Full markdown answer grounded in Vusion's Voice, Messaging, and Strategy guidelines. The agent applies the three-lens framework and is transparent about which lenses inform the answer."
+  }
+}

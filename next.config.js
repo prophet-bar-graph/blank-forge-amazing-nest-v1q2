@@ -1,0 +1,72 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'standalone',
+
+  // Keep compiled pages in memory longer in dev (default: 15s → 1 hour)
+  onDemandEntries: {
+    maxInactiveAge: 60 * 60 * 1000,
+    pagesBufferLength: 5,
+  },
+
+  // Optimize for faster builds
+  swcMinify: true,
+
+  // Reduce build time by skipping type checking (run separately)
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
+  // Skip ESLint during builds (run separately)
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
+  // Optimize images
+  images: {
+    unoptimized: true,
+  },
+
+  // Enable experimental features for faster dev
+  experimental: {
+    // pdf-parse pulls in pdfjs-dist, which loads its worker via dynamic
+    // import() that webpack can't statically analyze (throws "Cannot find
+    // module as expression is too dynamic" at runtime in API routes).
+    // Marking these as server-external skips bundling and lets Node resolve
+    // them at runtime, where the dynamic imports work fine.
+    serverComponentsExternalPackages: ['pdf-parse', 'pdfjs-dist'],
+    // Optimize package imports for faster builds
+    optimizePackageImports: [
+      'lucide-react',
+      '@radix-ui/react-accordion',
+      '@radix-ui/react-alert-dialog',
+      '@radix-ui/react-aspect-ratio',
+      '@radix-ui/react-avatar',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-collapsible',
+      '@radix-ui/react-context-menu',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-hover-card',
+      '@radix-ui/react-label',
+      '@radix-ui/react-menubar',
+      '@radix-ui/react-navigation-menu',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-progress',
+      '@radix-ui/react-radio-group',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-select',
+      '@radix-ui/react-separator',
+      '@radix-ui/react-slider',
+      '@radix-ui/react-slot',
+      '@radix-ui/react-switch',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toggle',
+      '@radix-ui/react-toggle-group',
+      '@radix-ui/react-tooltip',
+      'recharts',
+      'date-fns',
+    ],
+  },
+}
+
+module.exports = nextConfig

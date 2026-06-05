@@ -1,0 +1,112 @@
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input_node",
+        "type": "Input",
+        "label": "User Prompt (Compose / Refine / Chat)",
+        "nodeCategory": "input"
+      },
+      {
+        "id": "compose_agent",
+        "type": "Agent",
+        "label": "Vusion Compose Agent",
+        "nodeCategory": "agent"
+      },
+      {
+        "id": "refine_agent",
+        "type": "Agent",
+        "label": "Vusion Refine Agent",
+        "nodeCategory": "agent"
+      },
+      {
+        "id": "chat_agent",
+        "type": "Agent",
+        "label": "Vusion Chat Agent",
+        "nodeCategory": "agent"
+      },
+      {
+        "id": "output_node",
+        "type": "Output",
+        "label": "Brand Response",
+        "nodeCategory": "end"
+      }
+    ],
+    "edges": [
+      { "source": "input_node",    "target": "compose_agent" },
+      { "source": "input_node",    "target": "refine_agent" },
+      { "source": "input_node",    "target": "chat_agent" },
+      { "source": "compose_agent", "target": "output_node" },
+      { "source": "refine_agent",  "target": "output_node" },
+      { "source": "chat_agent",    "target": "output_node" }
+    ]
+  },
+  "agents": [
+    {
+      "agent_id": "6a1c6cbb8886862ba01d9792",
+      "name": "Vusion Compose Agent",
+      "description": "Vusion brand-grounded WRITE agent. Emits three on-brand copy variations with Hook/Solution/Story differentiators and per-lens integer scores.",
+      "model": "anthropic/claude-sonnet-4-5",
+      "provider": "anthropic",
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "agent_type": "json",
+      "has_knowledge_base": true,
+      "has_tools": false,
+      "has_image_output": false,
+      "has_voice": false,
+      "has_file_output": false,
+      "response_schema": {
+        "mode": "string",
+        "response": "string",
+        "data": {
+          "variations": "array"
+        }
+      }
+    },
+    {
+      "agent_id": "6a1c6cc07baa3366ce92da89",
+      "name": "Vusion Refine Agent",
+      "description": "Vusion brand-grounded REVIEW agent. Produces improved_copy, lens-tagged changes, and dual scorecards (original + improved).",
+      "model": "anthropic/claude-sonnet-4-5",
+      "provider": "anthropic",
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "agent_type": "json",
+      "has_knowledge_base": true,
+      "has_tools": false,
+      "has_image_output": false,
+      "has_voice": false,
+      "has_file_output": false,
+      "response_schema": {
+        "mode": "string",
+        "response": "string",
+        "data": {
+          "improved_copy": "string",
+          "changes": "array",
+          "scorecard": "object",
+          "improved_scorecard": "object"
+        }
+      }
+    },
+    {
+      "agent_id": "6a1c6cc2df4381b939d7a454",
+      "name": "Vusion Chat Agent",
+      "description": "Vusion brand-grounded CHAT agent. Free-form Q&A about voice, messaging, and verbal strategy.",
+      "model": "anthropic/claude-sonnet-4-5",
+      "provider": "anthropic",
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "agent_type": "json",
+      "has_knowledge_base": true,
+      "has_tools": false,
+      "has_image_output": false,
+      "has_voice": false,
+      "has_file_output": false,
+      "response_schema": {
+        "mode": "string",
+        "response": "string"
+      }
+    }
+  ]
+}

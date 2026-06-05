@@ -1,0 +1,20 @@
+{
+  "agents": {
+    "brand_voice_messaging_agent": {
+      "agent_id": "69f0c3b0e2788e14897928d6",
+      "name": "Brand Voice & Messaging Agent",
+      "model": "gpt-4.1",
+      "provider": "openai",
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "agent_type": "json",
+      "has_knowledge_base": false,
+      "has_tools": false,
+      "has_image_output": false,
+      "has_voice": false,
+      "has_file_output": false
+    }
+  },
+  "schedules": {},
+  "knowledge_bases": {}
+}
