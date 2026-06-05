@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import type { BrandProfile } from '@/lib/brandProfile'
+import { TPG_SAMPLE_PROFILE, type BrandProfile } from '@/lib/brandProfile'
 import { getOrCreateBrowserUserId, USER_ID_HEADER } from '@/lib/userId'
 
 interface BrandProfileContextValue {
@@ -37,7 +37,11 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
         headers: { [USER_ID_HEADER]: userId },
       })
       if (res.status === 404) {
-        setProfile(null)
+        // No saved profile yet — fall back to TPG as the default in-memory
+        // so the app shows a populated brand on first load. The user can
+        // override via "Configure brand" and Apply (which persists). This
+        // default is in-memory only; nothing is written to the DB.
+        setProfile(TPG_SAMPLE_PROFILE)
         return
       }
       const json = await res.json()
