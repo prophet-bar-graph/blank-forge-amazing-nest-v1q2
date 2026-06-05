@@ -73,13 +73,11 @@ export default function Page() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [brandModalOpen, setBrandModalOpen] = useState(false)
   const sessionIdRef = useRef('')
-  const { profile: brandProfile, loading: brandLoading } = useBrandProfile()
+  const { profile: brandProfile } = useBrandProfile()
 
-  // Auto-open the onboarding modal when the BrandProfile doc doesn't exist yet.
-  // Stays open until the user picks a path (Skip or Upload) and applyProfile succeeds.
-  useEffect(() => {
-    if (!brandLoading && !brandProfile) setBrandModalOpen(true)
-  }, [brandLoading, brandProfile])
+  // No auto-open: the modal is only opened on demand via the AvatarDropdown's
+  // "Configure brand" entry. Auto-opening locked users behind the Radix overlay
+  // and the modal had no Skip path, so every other button on the page felt dead.
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
