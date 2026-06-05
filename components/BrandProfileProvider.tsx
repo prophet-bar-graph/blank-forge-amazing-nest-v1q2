@@ -37,23 +37,25 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
         headers: { [USER_ID_HEADER]: userId },
       })
       if (res.status === 404) {
-        // No saved profile yet — fall back to TPG as the default in-memory
-        // so the app shows a populated brand on first load. The user can
-        // override via "Configure brand" and Apply (which persists). This
-        // default is in-memory only; nothing is written to the DB.
+        // No saved profile yet — fall back to TPG default in-memory.
         setProfile(TPG_SAMPLE_PROFILE)
         return
       }
-      const json = await res.json()
+      const json = await res.json().catch(() => null)
       if (json?.success && json.data) {
         setProfile(json.data as BrandProfile)
       } else {
-        setError(json?.error || 'failed to load profile')
-        setProfile(null)
+        // Any non-success response (500 from DB-init failure in preview env,
+        // 400 from missing user header, empty body, etc.) — treat as "no
+        // profile" and fall back to TPG. Capture the error for diagnostics
+        // but don't leave the user staring at a "Brand" shell.
+        setError(json?.error || `unexpected status ${res.status}`)
+        setProfile(TPG_SAMPLE_PROFILE)
       }
     } catch (err: any) {
+      // Network error, JSON parse failure, etc. — fall back to TPG.
       setError(err?.message || 'network error')
-      setProfile(null)
+      setProfile(TPG_SAMPLE_PROFILE)
     } finally {
       setLoading(false)
     }
