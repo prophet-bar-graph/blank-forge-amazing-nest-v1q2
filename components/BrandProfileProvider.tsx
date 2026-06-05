@@ -16,7 +16,11 @@ interface BrandProfileContextValue {
 const BrandProfileContext = createContext<BrandProfileContextValue | null>(null)
 
 export function BrandProfileProvider({ children }: { children: React.ReactNode }) {
-  const [profile, setProfile] = useState<BrandProfile | null>(null)
+  // Start with TPG so SSR + the first client render both have a populated
+  // brand even before fetchProfile runs (which it won't if React fails to
+  // hydrate). fetchProfile overrides with the real saved profile when one
+  // exists in the DB.
+  const [profile, setProfile] = useState<BrandProfile | null>(TPG_SAMPLE_PROFILE)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // Stable per-browser identifier. Computed once on mount; persists in localStorage.
@@ -108,9 +112,13 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
 // throwing here would crash the whole tree during that tick. The default makes
 // sections fall back to emptyBrandProfile() via their `profile || empty`
 // pattern until the provider hydrates.
+// TPG as the no-provider default so sections that fall through this code
+// path (rendered before the provider mounts, or if the provider fails to
+// mount at all in a broken-hydration preview) still see a populated brand
+// instead of an empty `Brand` shell.
 const NO_PROVIDER_DEFAULT: BrandProfileContextValue = {
-  profile: null,
-  loading: true,
+  profile: TPG_SAMPLE_PROFILE,
+  loading: false,
   error: null,
   userId: '',
   refresh: async () => {},

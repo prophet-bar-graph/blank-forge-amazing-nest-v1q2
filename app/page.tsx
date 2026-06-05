@@ -142,7 +142,7 @@ export default function Page() {
   const onRefine  = useCallback((prompt: string) => handleCallAgent(prompt, REFINE_AGENT_ID),  [handleCallAgent])
   const onChat    = useCallback((prompt: string) => handleCallAgent(prompt, CHAT_AGENT_ID),    [handleCallAgent])
 
-  const companyName = brandProfile?.companyName || 'Brand'
+  const companyName = brandProfile?.companyName || 'TPG'
 
   return (
     <ErrorBoundary>
