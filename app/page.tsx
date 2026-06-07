@@ -149,7 +149,7 @@ export default function Page() {
       <div className="min-h-screen bg-studio-page text-studio-ink font-sans">
         {/* Header */}
         <header>
-          <div className="max-w-[1280px] mx-auto px-2 pt-4 pb-3 flex items-start justify-between gap-8">
+          <div className="max-w-[1400px] mx-auto px-2 pt-4 pb-3 flex items-start justify-between gap-8">
             <div className="space-y-2">
               <a
                 href="https://maia.prophet.com/agent-library"
@@ -179,7 +179,7 @@ export default function Page() {
           </div>
 
           {/* Tab nav — small icons + pill active state */}
-          <div className="max-w-[1280px] mx-auto px-2 pb-3">
+          <div className="max-w-[1400px] mx-auto px-2 pb-3">
             <div className="flex gap-1">
               {TABS.map(tab => {
                 const isActive = activeTab === tab.key
@@ -204,7 +204,7 @@ export default function Page() {
         </header>
 
         {/* Main content */}
-        <main className="max-w-[1280px] mx-auto px-2 py-4">
+        <main className="max-w-[1400px] mx-auto px-2 py-4">
           {activeTab === 'compose' && (
             <WriteSection channel={channel} audience={audience} onCallAgent={onCompose} loading={loading} onSendToRefine={sendToRefine} onChannelChange={setChannel} onAudienceChange={setAudience} />
           )}

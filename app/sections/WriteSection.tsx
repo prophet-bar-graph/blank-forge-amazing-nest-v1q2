@@ -228,10 +228,6 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
     : 'Email to prospects'
   const placeholderSupporting = brand.partnerPillars?.[1] || brand.partnerPillars?.[0] || 'Key supporting message'
   const placeholderCta = brand.callToAction || 'Discover more'
-  const sidebarHeadline = `${brand.companyName || 'Brand'}${brand.keyPhrase ? ` · ${brand.keyPhrase}` : ''}`
-  // Sidebar pills: prefer partnerPillars (value pillars), fall back to portfolioPillars,
-  // truncate to 3 so they fit the narrow sidebar.
-  const sidebarPills = (brand.partnerPillars?.length ? brand.partnerPillars : brand.portfolioPillars || []).slice(0, 3)
 
   const [contentObjective, setContentObjective] = useState('')
   const [supportingMessages, setSupportingMessages] = useState('')
@@ -328,7 +324,6 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
     }
   }
 
-  const sidebarPersona = brand.keyPhrase || brand.companyName || 'Brand'
 
   // Currently displayed variant in the middle Copy carousel. Clamp the index
   // in case variations changed (e.g., heuristic re-sorting).
@@ -336,7 +331,7 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
   const activeVariant = enrichedVariations[safeIndex]
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_280px] gap-6 lg:gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6 lg:gap-8">
 
       {/* ---- BRIEF (LEFT) ---- */}
       <div className="flex flex-col">
@@ -348,13 +343,13 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
           {/* 1. Channel */}
           <div>
             <h4 className="font-bold text-sm text-studio-ink mb-2">Select a channel:</h4>
-            <div className="flex flex-nowrap gap-1 whitespace-nowrap">
+            <div className="flex flex-wrap gap-1.5">
               {CHANNELS.map(ch => (
                 <button
                   key={ch}
                   type="button"
                   onClick={() => onChannelChange(ch)}
-                  className={`px-2 py-0.5 rounded-full text-xs transition ${
+                  className={`px-3 py-1 rounded-full text-xs transition ${
                     channel === ch
                       ? 'bg-studio-ink text-studio-page'
                       : 'bg-studio-page border border-studio-border text-studio-muted hover:text-studio-ink'
@@ -476,7 +471,12 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
 
       {/* ---- COPY (MIDDLE) — empty / loading / carousel ---- */}
       <div className="flex flex-col">
-        <StepEyebrow step={2} label="Preview Generated Copy" />
+        <div className="flex items-baseline justify-between gap-3">
+          <StepEyebrow step={2} label="Preview Generated Copy" />
+          {result && enrichedVariations.length > 1 && (
+            <p className="italic text-xs text-studio-mutedSoft mb-3">use the buttons below to swipe between</p>
+          )}
+        </div>
         <section className="bg-studio-card rounded-2xl border border-studio-border p-4 lg:p-5 flex flex-col flex-1">
 
         {/* Empty state */}
@@ -549,51 +549,6 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
         )}
       </div>
 
-      {/* ---- RIGHT RAIL ---- the vertical line runs the full height of the
-           rail; the "Active Profile" pill sits INSIDE the bordered area at
-           the top, left-aligned with the persona heading below. */}
-      <aside className="hidden lg:block">
-        <div className="border-l border-studio-border pl-8">
-          <div className="inline-flex items-center px-4 py-1.5 rounded-full border border-studio-border bg-studio-page text-sm text-studio-ink mb-4">
-            Active Profile
-          </div>
-          <div className="space-y-8">
-          {/* Persona heading + principle pills */}
-          <div>
-            <h3 className="font-bold text-3xl text-studio-ink leading-tight mb-4">{sidebarPersona}</h3>
-            {sidebarPills.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {sidebarPills.map(t => (
-                  <span key={t} className="px-3 py-1 rounded-full bg-studio-card text-xs text-studio-muted">{t}</span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Targeting */}
-          <div>
-            <p className="font-bold text-sm text-studio-ink mb-3">Targeting</p>
-            <div className="space-y-1.5 text-sm">
-              <Row k="Channel" v={channel || 'Any'} />
-              <Row k="Audience" v={audience || 'general'} />
-              <Row k="Tone" v={`${tone}/10`} />
-            </div>
-          </div>
-          </div>
-        </div>
-      </aside>
-
-    </div>
-  )
-}
-
-// ---- Right rail row ----
-
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-studio-muted">{k}</span>
-      <span className="font-bold text-studio-ink text-right truncate">{v}</span>
     </div>
   )
 }
@@ -656,7 +611,7 @@ function VariantCard({ index, variation, mandatories, onSendToRefine, onCopy, co
           return (
             <div key={lens} className="flex flex-col">
               <span className="text-xs font-bold text-studio-ink capitalize">{lens}</span>
-              <span className={`text-base font-bold ${scoreColorClass(score)}`}>{score}</span>
+              <span className={`text-2xl font-bold ${scoreColorClass(score)}`}>{score}</span>
             </div>
           )
         })}

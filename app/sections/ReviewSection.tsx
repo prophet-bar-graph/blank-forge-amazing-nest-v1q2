@@ -512,42 +512,36 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
       {/* Body — scores rail (left, narrow) + document column (right, wide).
           Same 1fr/2fr ratio as the empty-state input layout above. */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6">
-        {/* Document — visually on the right via lg:order-2 */}
-        <div className="min-h-[400px] lg:order-2">
+        {/* Document column wrapper — flex-col so the bordered document
+            stretches and Accept All sits at the bottom (top-aligning with the
+            Refine Again button at the bottom of the scores rail). */}
+        <div className="lg:order-2 flex flex-col">
+        <div className="min-h-[400px] flex-1 rounded-2xl border border-studio-border p-6 lg:p-8">
           {/* Right column header — "Refine Copy:" label + tabs (Annotated /
-              Refined / Original) + Accept All Suggestions on the far right. */}
-          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-            <div className="flex items-center gap-3">
-              <h3 className="font-bold text-sm text-studio-ink">Refine Copy:</h3>
-              <div className="flex items-center gap-1 text-sm">
-                {!loading && (['diff', 'refined', 'original'] as const).map(mode => {
-                  const label = mode === 'diff' ? 'Annotated' : mode === 'refined' ? 'Refined' : 'Original'
-                  const isActive = effectiveMode === mode
-                  const disabled = allAccepted && mode !== 'refined'
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() => !disabled && setViewMode(mode)}
-                      disabled={disabled}
-                      className={`px-3 py-1.5 rounded-md transition-colors text-sm ${
-                        isActive
-                          ? 'bg-studio-card text-studio-ink font-medium'
-                          : 'text-studio-mutedSoft hover:text-studio-ink hover:bg-studio-cardSubtle'
-                      } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-                    >
-                      {label}
-                    </button>
-                  )
-                })}
-              </div>
+              Refined / Original). Accept All moved out, below the box. */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <h3 className="font-bold text-sm text-studio-ink">Refine Copy:</h3>
+            <div className="flex items-center gap-1 text-sm">
+              {!loading && (['diff', 'refined', 'original'] as const).map(mode => {
+                const label = mode === 'diff' ? 'Annotated' : mode === 'refined' ? 'Refined' : 'Original'
+                const isActive = effectiveMode === mode
+                const disabled = allAccepted && mode !== 'refined'
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => !disabled && setViewMode(mode)}
+                    disabled={disabled}
+                    className={`px-3 py-1.5 rounded-md transition-colors text-sm ${
+                      isActive
+                        ? 'bg-studio-card text-studio-ink font-medium'
+                        : 'text-studio-mutedSoft hover:text-studio-ink hover:bg-studio-cardSubtle'
+                    } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
             </div>
-            <Button
-              onClick={() => setAllAccepted(true)}
-              disabled={allAccepted}
-              className="bg-studio-ink hover:bg-studio-muted text-studio-page rounded-md h-10 px-5 text-sm font-medium"
-            >
-              {allAccepted ? <><Check className="mr-2 h-4 w-4" />All accepted</> : <>Accept All Suggestions <ArrowRight className="ml-2 h-4 w-4" /></>}
-            </Button>
           </div>
 
           {(() => {
@@ -640,6 +634,19 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
           })()}
         </div>
 
+        {/* Accept All Suggestions — below the bordered document. With the
+            wrapper as flex-col and the document area flex-1, this button sits
+            at the bottom of the column and top-aligns with the Refine Again
+            button at the bottom of the scores rail. */}
+        <Button
+          onClick={() => setAllAccepted(true)}
+          disabled={allAccepted}
+          className="self-start mt-4 bg-studio-ink hover:bg-studio-muted text-studio-page rounded-md h-10 px-5 text-sm font-medium"
+        >
+          {allAccepted ? <><Check className="mr-2 h-4 w-4" />All accepted</> : <>Accept All Suggestions <ArrowRight className="ml-2 h-4 w-4" /></>}
+        </Button>
+        </div>
+
         {/* Scores rail — 4 lens cards (Overall + Voice/Messaging/Strategy)
             then a single notes textarea + Refine Again. Visually on the LEFT
             (matching the input layout) via lg:order-1. */}
@@ -707,9 +714,9 @@ function LensCard({ label, current, previous, body }: {
 }) {
   return (
     <div className="space-y-1.5">
-      <span className="inline-flex items-center px-4 py-1.5 rounded-full border border-studio-border bg-studio-page text-sm text-studio-ink">
+      <h4 className="font-bold text-sm text-studio-ink">
         {label}
-      </span>
+      </h4>
       <p className={`text-2xl font-bold leading-none ${current != null ? scoreColorClass(current) : 'text-studio-mutedSoft'}`}>
         {current != null ? `${current}/100` : 'X/100'}
       </p>

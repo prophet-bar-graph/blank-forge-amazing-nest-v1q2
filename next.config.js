@@ -25,6 +25,9 @@ const nextConfig = {
     unoptimized: true,
   },
 
+  // Hide the bottom-corner "N" dev-mode badge that Next 16 shows by default.
+  devIndicators: false,
+
   // pdf-parse / pdfjs-dist load workers via dynamic import that the bundler
   // can't statically analyze. Marking them as server-external skips bundling.
   serverExternalPackages: ['pdf-parse', 'pdfjs-dist'],
