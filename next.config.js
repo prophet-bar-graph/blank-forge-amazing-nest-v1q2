@@ -2,6 +2,13 @@
 const nextConfig = {
   output: 'standalone',
 
+  // The app is loaded inside an iframe served from a different subdomain
+  // (preview--*.app.architect.new). Next.js 15.2+ blocks /_next/* dev resources
+  // from cross-origin callers by default — including the static JS chunks
+  // needed for hydration. Without this allowlist the page renders the SSR HTML
+  // but never hydrates, so every button feels dead.
+  allowedDevOrigins: ['*.architect.new', '*.app.architect.new', '*'],
+
   // Keep compiled pages in memory longer in dev (default: 15s → 1 hour)
   onDemandEntries: {
     maxInactiveAge: 60 * 60 * 1000,
