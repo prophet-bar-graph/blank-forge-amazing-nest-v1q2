@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # Copy source files
 COPY . .
@@ -39,3 +39,4 @@ ENV PORT=3333
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
+
