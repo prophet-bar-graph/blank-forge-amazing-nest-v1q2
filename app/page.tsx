@@ -75,11 +75,20 @@ export default function Page() {
   const [brandModalOpen, setBrandModalOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const sessionIdRef = useRef('')
-  const { profile: brandProfile } = useBrandProfile()
+  const { profile: brandProfile, loading: brandLoading } = useBrandProfile()
 
-  // No auto-open: the modal is only opened on demand via the AvatarDropdown's
-  // "Configure brand" entry. Auto-opening locked users behind the Radix overlay
-  // and the modal had no Skip path, so every other button on the page felt dead.
+  // Auto-open the onboarding modal on first visit (no saved profile). The
+  // modal has a close button and a Skip path, so the user can dismiss it and
+  // come back via the AvatarDropdown's "Configure brand" entry. Fires once.
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (autoOpenedRef.current) return
+    if (brandLoading) return
+    if (!brandProfile) {
+      autoOpenedRef.current = true
+      setBrandModalOpen(true)
+    }
+  }, [brandLoading, brandProfile])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -144,7 +153,7 @@ export default function Page() {
   const onRefine  = useCallback((prompt: string) => handleCallAgent(prompt, REFINE_AGENT_ID),  [handleCallAgent])
   const onChat    = useCallback((prompt: string) => handleCallAgent(prompt, CHAT_AGENT_ID),    [handleCallAgent])
 
-  const companyName = brandProfile?.companyName || 'TPG'
+  const companyName = brandProfile?.companyName || '[Brand]'
 
   return (
     <ErrorBoundary>

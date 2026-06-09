@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { TPG_SAMPLE_PROFILE, type BrandProfile } from '@/lib/brandProfile'
+import { type BrandProfile } from '@/lib/brandProfile'
 import { getOrCreateBrowserUserId, USER_ID_HEADER } from '@/lib/userId'
 
 interface BrandProfileContextValue {
@@ -16,11 +16,10 @@ interface BrandProfileContextValue {
 const BrandProfileContext = createContext<BrandProfileContextValue | null>(null)
 
 export function BrandProfileProvider({ children }: { children: React.ReactNode }) {
-  // Start with TPG so SSR + the first client render both have a populated
-  // brand even before fetchProfile runs (which it won't if React fails to
-  // hydrate). fetchProfile overrides with the real saved profile when one
-  // exists in the DB.
-  const [profile, setProfile] = useState<BrandProfile | null>(TPG_SAMPLE_PROFILE)
+  // Start null — UI renders a "[Brand]" placeholder and the onboarding modal
+  // auto-opens until the user saves a real profile. fetchProfile overrides
+  // with the real saved profile when one exists in the DB.
+  const [profile, setProfile] = useState<BrandProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // Stable per-browser identifier. Computed once on mount; persists in localStorage.
@@ -41,25 +40,24 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
         headers: { [USER_ID_HEADER]: userId },
       })
       if (res.status === 404) {
-        // No saved profile yet — fall back to TPG default in-memory.
-        setProfile(TPG_SAMPLE_PROFILE)
+        // No saved profile yet — leave profile null so the placeholder shows
+        // and the onboarding modal can auto-open.
+        setProfile(null)
         return
       }
       const json = await res.json().catch(() => null)
       if (json?.success && json.data) {
         setProfile(json.data as BrandProfile)
       } else {
-        // Any non-success response (500 from DB-init failure in preview env,
-        // 400 from missing user header, empty body, etc.) — treat as "no
-        // profile" and fall back to TPG. Capture the error for diagnostics
-        // but don't leave the user staring at a "Brand" shell.
+        // Any non-success response — treat as "no profile" and leave null
+        // so the user sees the placeholder + onboarding modal.
         setError(json?.error || `unexpected status ${res.status}`)
-        setProfile(TPG_SAMPLE_PROFILE)
+        setProfile(null)
       }
     } catch (err: any) {
-      // Network error, JSON parse failure, etc. — fall back to TPG.
+      // Network error, JSON parse failure, etc. — leave profile null.
       setError(err?.message || 'network error')
-      setProfile(TPG_SAMPLE_PROFILE)
+      setProfile(null)
     } finally {
       setLoading(false)
     }
@@ -120,15 +118,11 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
 
 // Returns a permissive default when called outside the provider. ClientProviders
 // renders children without the provider for one tick during SSR/pre-mount —
-// throwing here would crash the whole tree during that tick. The default makes
-// sections fall back to emptyBrandProfile() via their `profile || empty`
-// pattern until the provider hydrates.
-// TPG as the no-provider default so sections that fall through this code
-// path (rendered before the provider mounts, or if the provider fails to
-// mount at all in a broken-hydration preview) still see a populated brand
-// instead of an empty `Brand` shell.
+// throwing here would crash the whole tree during that tick. Sections fall
+// back to emptyBrandProfile() via their `profile || empty` pattern until the
+// provider hydrates; the header shows a "[Brand]" placeholder.
 const NO_PROVIDER_DEFAULT: BrandProfileContextValue = {
-  profile: TPG_SAMPLE_PROFILE,
+  profile: null,
   loading: false,
   error: null,
   userId: '',
