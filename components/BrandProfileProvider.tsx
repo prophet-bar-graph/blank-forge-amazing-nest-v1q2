@@ -81,13 +81,24 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
         },
         body: JSON.stringify(next),
       })
-      const json = await res.json()
+      // The deployed platform sometimes returns plain-text "Internal Server
+      // Error" (or an HTML error page) instead of our route's JSON 500. Read
+      // the body as text first, then try JSON.parse — otherwise res.json()
+      // throws "Unexpected token 'I', "Internal S"... is not valid JSON" and
+      // the save appears to crash with no useful message.
+      const raw = await res.text()
+      let json: any = null
+      try { json = raw ? JSON.parse(raw) : null } catch { /* non-JSON body */ }
       if (json?.success && json.data) {
         setProfile(json.data as BrandProfile)
         setError(null)
         return json.data as BrandProfile
       }
-      setError(json?.error || 'failed to apply profile')
+      const reason =
+        json?.error ||
+        (raw && !raw.trim().startsWith('{') ? raw.trim().slice(0, 200) : '') ||
+        `failed to apply profile (status ${res.status})`
+      setError(reason)
       return null
     } catch (err: any) {
       setError(err?.message || 'network error')
