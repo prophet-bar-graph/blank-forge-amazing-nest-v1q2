@@ -367,7 +367,7 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
         <div className="flex flex-col">
           <StepEyebrow step={1} label="Build the Brief" />
 
-          <section className="bg-studio-card rounded-2xl border border-studio-border p-4 lg:p-5 flex flex-col">
+          <section className="rounded-2xl border border-black/75 p-4 lg:p-5 flex flex-col">
             <div className="space-y-3">
               {/* Channel */}
               <div>
@@ -473,10 +473,11 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
             />
           </div>
 
-          <Button
+          <button
+            type="button"
             onClick={handleRefine}
             disabled={loading || !pastedCopy.trim()}
-            className="self-start mt-4 h-10 px-5 bg-studio-ink hover:bg-studio-muted text-studio-page rounded-md font-medium text-sm tracking-wide disabled:bg-studio-card disabled:text-studio-mutedSoft"
+            className="self-start mt-4 h-10 inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 disabled:text-studio-mutedSoft disabled:cursor-not-allowed group"
           >
             {loading ? (
               <span className="inline-flex items-center gap-3">
@@ -484,9 +485,12 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
                 <LoadingWords words={REFINE_LOADING_WORDS} className="italic" />
               </span>
             ) : (
-              <>Refine Copy <ArrowRight className="ml-2 h-4 w-4" /></>
+              <>
+                <span className="underline underline-offset-2 group-disabled:no-underline">Refine Copy</span>
+                <ArrowRight className="h-4 w-4" />
+              </>
             )}
-          </Button>
+          </button>
 
           {error && (
             <div className="flex items-center gap-2 p-2.5 rounded-md bg-studio-card border border-studio-border text-xs mt-3">
@@ -686,19 +690,28 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
               rows={3}
               className="bg-white border-studio-muted/30 text-studio-ink placeholder:text-studio-muted/65 text-sm rounded-md resize-none mb-3"
             />
-            <Button
+            <button
+              type="button"
               onClick={() => {
                 const trimmed = noteDraft.trim()
                 setNotes(trimmed ? [trimmed] : [])
                 handleRefine()
               }}
               disabled={loading}
-              className="bg-studio-ink hover:bg-studio-muted text-studio-page rounded-md h-10 px-5 text-sm font-medium"
+              className="h-10 inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 disabled:text-studio-mutedSoft disabled:cursor-not-allowed group"
             >
-              {loading
-                ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Refining…</>
-                : <>Refine Again <ArrowRight className="ml-2 h-3.5 w-3.5" /></>}
-            </Button>
+              {loading ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Refining…</span>
+                </span>
+              ) : (
+                <>
+                  <span className="underline underline-offset-2 group-disabled:no-underline">Refine Again</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </>
+              )}
+            </button>
           </div>
         </aside>
       </div>

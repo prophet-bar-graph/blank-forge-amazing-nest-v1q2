@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Loader2, ArrowRight, ArrowUpRight, RotateCcw, Check, Copy as CopyIcon, AlertCircle } from 'lucide-react'
@@ -336,7 +335,7 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
       {/* ---- BRIEF (LEFT) ---- */}
       <div className="flex flex-col">
         <StepEyebrow step={1} label="Build the Brief" />
-        <section className="bg-studio-card rounded-2xl border border-studio-border p-4 lg:p-5 flex flex-col flex-1">
+        <section className="rounded-2xl border border-black/75 p-4 lg:p-5 flex flex-col flex-1">
 
         <div className="space-y-2.5 flex-1">
 
@@ -445,11 +444,13 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
 
         </div>
 
-        {/* Generate Copy — left-aligned, bordered, half-width */}
-        <Button
+        {/* Generate Copy — link-style CTA matching the Learn cards. Size preserved
+            (h-10, px-6, mt-3, self-start) so the brief column's height doesn't shift. */}
+        <button
+          type="button"
           onClick={handleGenerate}
           disabled={loading || !contentObjective.trim() || !supportingMessages.trim()}
-          className="h-10 mt-3 px-6 self-start border border-studio-border bg-studio-ink hover:bg-studio-muted text-studio-page rounded-md font-medium text-sm tracking-wide disabled:bg-studio-card disabled:text-studio-mutedSoft"
+          className="h-10 mt-3 self-start inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 disabled:text-studio-mutedSoft disabled:cursor-not-allowed group"
         >
           {loading ? (
             <span className="inline-flex items-center gap-3">
@@ -457,9 +458,12 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
               <LoadingWords words={COMPOSE_LOADING_WORDS} className="italic" />
             </span>
           ) : (
-            <>Generate Copy <ArrowRight className="ml-2 h-4 w-4" /></>
+            <>
+              <span className="underline underline-offset-2 group-disabled:no-underline">Generate my copy</span>
+              <ArrowRight className="h-4 w-4" />
+            </>
           )}
-        </Button>
+        </button>
         {error && (
           <div className="flex items-center gap-2 p-2.5 rounded-md bg-studio-page border border-studio-border text-xs mt-3">
             <AlertCircle className="h-3.5 w-3.5 text-studio-scoreRed flex-shrink-0" />
@@ -473,9 +477,7 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
       <div className="flex flex-col">
         <div className="flex items-baseline justify-between gap-3">
           <StepEyebrow step={2} label="Preview Generated Copy" />
-          {result && enrichedVariations.length > 1 && (
-            <p className="italic text-xs text-studio-mutedSoft mb-3">use the buttons below to swipe between</p>
-          )}
+          <p className="italic text-xs text-studio-mutedSoft mb-3">Use the buttons below the card to navigate options</p>
         </div>
         <section className="bg-studio-card rounded-2xl border border-studio-border p-4 lg:p-5 flex flex-col flex-1">
 
@@ -527,26 +529,32 @@ export default function WriteSection({ channel, audience, onCallAgent, loading, 
         )}
         </section>
 
-        {/* Dot pager — below the Copy card. Reserves space whenever a result
-            is shown so the Copy section is naturally shorter than the Brief
-            section by the pager height. */}
-        {result && enrichedVariations.length > 0 && (
-          <div className="flex items-center justify-center gap-3 mt-4">
-            {enrichedVariations.map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setCarouselIndex(i)}
-                aria-label={`Show variant ${i + 1}`}
-                className={`h-4 rounded-full transition-all ${
-                  i === safeIndex
-                    ? 'w-12 bg-studio-ink'
-                    : 'w-4 bg-studio-mutedSoft/40 hover:bg-studio-mutedSoft'
-                }`}
-              />
-            ))}
-          </div>
-        )}
+        {/* Dot pager — always rendered below the Copy card so the Copy section
+            is consistently shorter than the Brief section by the pager height.
+            Pre-generation: three muted placeholder dots (no interaction). */}
+        <div className="flex items-center justify-center gap-3 mt-4">
+          {enrichedVariations.length > 0
+            ? enrichedVariations.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setCarouselIndex(i)}
+                  aria-label={`Show variant ${i + 1}`}
+                  className={`h-4 rounded-full transition-all ${
+                    i === safeIndex
+                      ? 'w-12 bg-studio-ink'
+                      : 'w-4 bg-studio-mutedSoft/40 hover:bg-studio-mutedSoft'
+                  }`}
+                />
+              ))
+            : [0, 1, 2].map(i => (
+                <div
+                  key={i}
+                  aria-hidden
+                  className={`h-4 rounded-full bg-studio-mutedSoft/40 ${i === 0 ? 'w-12' : 'w-4'}`}
+                />
+              ))}
+        </div>
       </div>
 
     </div>

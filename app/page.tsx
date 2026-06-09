@@ -10,7 +10,8 @@ import CommandPalette from '@/components/CommandPalette'
 import { BrandOnboardingModal } from '@/components/BrandOnboardingModal'
 import { useBrandProfile } from '@/components/BrandProfileProvider'
 import { AvatarDropdown } from '@/components/AvatarDropdown'
-import { BookOpen, PenSquare, Wand2, Sparkles } from 'lucide-react'
+import { AboutModal } from '@/components/AboutModal'
+import { BookOpen, PenSquare, Wand2, Sparkles, HelpCircle } from 'lucide-react'
 
 // Brand-agnostic clones of the three mode-specific agents. The Vusion-locked
 // originals had a KNOWLEDGE_BASE feature pointing at Vusion's RAG; these
@@ -72,6 +73,7 @@ export default function Page() {
   const [pendingRefineScores, setPendingRefineScores] = useState<{ voice: number; messaging: number; strategy: number } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [brandModalOpen, setBrandModalOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const sessionIdRef = useRef('')
   const { profile: brandProfile } = useBrandProfile()
 
@@ -162,7 +164,18 @@ export default function Page() {
                 <span className="text-studio-mutedSoft text-lg font-light leading-none">|</span>
                 <span className="font-sans font-bold tracking-tight text-[18px] text-studio-ink leading-none">MAIA</span>
               </a>
-              <h1 className="font-sans font-bold text-[26px] text-studio-ink leading-tight">The Writing Studio</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="font-sans font-bold text-[26px] text-studio-ink leading-tight">The Writing Studio</h1>
+                <button
+                  type="button"
+                  onClick={() => setAboutOpen(true)}
+                  aria-label="About this app"
+                  title="About this app"
+                  className="text-studio-mutedSoft hover:text-studio-ink transition-colors"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-3 pt-1">
@@ -230,6 +243,9 @@ export default function Page() {
         {brandModalOpen && (
           <BrandOnboardingModal open={brandModalOpen} onOpenChange={setBrandModalOpen} />
         )}
+
+        {/* About this app: info modal explaining the architecture and HITL philosophy. */}
+        <AboutModal open={aboutOpen} onOpenChange={setAboutOpen} />
       </div>
     </ErrorBoundary>
   )

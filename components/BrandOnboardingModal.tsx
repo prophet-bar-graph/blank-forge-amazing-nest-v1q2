@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Loader2, Upload, ArrowRight, RotateCcw, FileText, AlertCircle, Sparkles } from 'lucide-react'
+import { Loader2, ArrowRight, RotateCcw, FileText, AlertCircle, Sparkles } from 'lucide-react'
 import { useBrandProfile } from '@/components/BrandProfileProvider'
 import { BRAND_SAMPLES, BrandProfile, emptyBrandProfile } from '@/lib/brandProfile'
 import { USER_ID_HEADER } from '@/lib/userId'
@@ -173,17 +173,10 @@ export function BrandOnboardingModal({ open, onOpenChange }: BrandOnboardingModa
           }}
         />
 
-        {/* CHOICE — Upload or Start blank */}
+        {/* CHOICE — Drop zone for PDF upload, plus Start blank fallback */}
         {mode === 'choice' && (
           <div className="space-y-3 pt-4">
-            <Button
-              onClick={handleFilePick}
-              className="w-full h-12 bg-studio-ink hover:bg-studio-ink text-studio-page justify-start gap-3"
-            >
-              <Upload className="h-4 w-4" />
-              Upload brand PDF
-              <ArrowRight className="ml-auto h-4 w-4" />
-            </Button>
+            <PdfDropZone onPick={handleFilePick} onFile={handleFile} />
 
             <Button
               onClick={handleStartBlank}
@@ -218,25 +211,14 @@ export function BrandOnboardingModal({ open, onOpenChange }: BrandOnboardingModa
         {/* EDIT — review + edit BrandProfile fields */}
         {mode === 'edit' && (
           <div className="space-y-4 pt-2">
-            {/* Load sample data — quick way to populate the form for demos /
+            {/* Large PDF drop zone — same affordance as the choice screen.
+                Click or drop a PDF to re-run the extractor and repopulate the
+                form below with fresh values. */}
+            <PdfDropZone onPick={handleFilePick} onFile={handleFile} />
+
+            {/* Sample loaders — quick way to populate the form for demos /
                 testing. Clicking a sample button replaces the form values. */}
             <div className="flex items-center gap-2 flex-wrap pb-3 border-b border-studio-muted/20">
-              {/* Upload PDF — same flow as the choice screen; transitions the
-                  modal into 'uploading' → 'extracting' → 'edit' with the form
-                  re-populated from the extractor. */}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleFilePick}
-                className="h-7 px-3 text-[12px] border-studio-muted/30 text-studio-muted/90 hover:bg-studio-border/30 hover:text-studio-ink gap-1.5"
-              >
-                <Upload className="h-3 w-3" />
-                Upload PDF
-              </Button>
-
-              <span className="h-4 w-px bg-studio-muted/20 mx-1" />
-
               <Sparkles className="h-3.5 w-3.5 text-studio-muted/85 flex-shrink-0" />
               <span className="text-[11px] uppercase tracking-[0.14em] text-studio-muted/85">Load sample</span>
               {BRAND_SAMPLES.map((s) => (
@@ -420,6 +402,40 @@ function Field({ label, required, hint, extractorEmpty, children }: {
         </p>
       )}
       {children}
+    </div>
+  )
+}
+
+// Reusable PDF drop zone. Used in both choice mode (first-load) and edit mode
+// (re-extract). Each instance owns its own isDragging state so highlighting one
+// doesn't bleed into the other.
+function PdfDropZone({ onPick, onFile }: { onPick: () => void; onFile: (file: File) => void }) {
+  const [isDragging, setIsDragging] = useState(false)
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onPick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick() } }}
+      onDragOver={(e) => { e.preventDefault(); if (!isDragging) setIsDragging(true) }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setIsDragging(false)
+        const f = e.dataTransfer.files?.[0]
+        if (f) onFile(f)
+      }}
+      className={`w-full rounded-xl border-2 border-dashed px-6 py-12 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
+        isDragging
+          ? 'border-studio-ink bg-studio-cardSubtle'
+          : 'border-studio-muted/50 bg-studio-page hover:border-studio-ink hover:bg-studio-cardSubtle'
+      }`}
+    >
+      <FileText className="h-8 w-8 text-studio-muted" strokeWidth={1.5} />
+      <p className="font-bold text-base text-studio-ink mt-2">Upload PDFs here</p>
+      <p className="text-sm text-studio-muted text-center">
+        Voice Persona, Brand Voice Guidelines, Brand Positioning, etc.
+      </p>
     </div>
   )
 }
