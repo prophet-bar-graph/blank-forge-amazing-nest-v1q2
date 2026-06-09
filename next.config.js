@@ -28,9 +28,9 @@ const nextConfig = {
   // Hide the bottom-corner "N" dev-mode badge that Next 16 shows by default.
   devIndicators: false,
 
-  // pdf-parse / pdfjs-dist load workers via dynamic import that the bundler
-  // can't statically analyze. Marking them as server-external skips bundling.
-  serverExternalPackages: ['pdf-parse', 'pdfjs-dist'],
+  // PDF parsing happens in the browser via CDN-hosted PDF.js (see
+  // lib/pdfjs-cdn.ts) so the server build no longer needs pdf-parse or
+  // pdfjs-dist as deps. No serverExternalPackages entries required.
 
   // Enable experimental features for faster dev
   experimental: {

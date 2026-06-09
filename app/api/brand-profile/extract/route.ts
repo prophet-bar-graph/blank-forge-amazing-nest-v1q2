@@ -1,22 +1,21 @@
 // POST /api/brand-profile/extract — invokes the Brand Profile Extractor agent
-// on a PDF the client uploads directly. The PDF is parsed server-side so the
-// full document text is INLINED into the agent's prompt — bypassing Lyzr's
-// `assets` parameter, which doesn't reliably surface PDF contents.
+// on PDF text the client already parsed in the browser. We do NOT parse the
+// PDF server-side anymore: the Architect deploy pipeline can't reliably
+// install `pdf-parse`/`pdfjs-dist`, so the browser uses CDN-hosted PDF.js
+// (see lib/pdfjs-cdn.ts) and sends the extracted text here as JSON.
 //
-// Body: multipart/form-data with a `file` field (the PDF)
+// Body: { filename: string, text: string }
 // Returns: { success: true, data: BrandProfile } | { success: false, error }
 //
-// The server reads the PDF (`pdf-parse` v2), extracts text, builds a single
-// inference call to Lyzr's chat endpoint with the document text inside the
-// `message` field, and returns the parsed BrandProfile JSON.
+// The server inlines the document text into the agent's `message` field and
+// returns the parsed BrandProfile JSON (with the raw text preserved as
+// brandBibleText so KB-less agents can read it on every call).
 
 import { NextRequest, NextResponse } from 'next/server'
-import { PDFParse } from 'pdf-parse'
 import type { BrandProfile } from '@/lib/brandProfile'
 import { USER_ID_HEADER } from '@/lib/userId'
 
 export const dynamic = 'force-dynamic'
-// pdf-parse needs Node APIs (Buffer, fs streams via pdfjs worker) — Edge runtime won't work.
 export const runtime = 'nodejs'
 
 const EXTRACTOR_AGENT_ID = '6a1f940564d5dd595c8475a1'
@@ -35,16 +34,6 @@ const MAX_DOC_CHARS = 150_000
 function readUserId(req: NextRequest): string | null {
   const id = req.headers.get(USER_ID_HEADER)
   return id && id.trim() ? id.trim() : null
-}
-
-async function extractPdfText(buf: Buffer): Promise<string> {
-  const parser = new PDFParse({ data: buf })
-  try {
-    const result = await parser.getText()
-    return (result.text || '').trim()
-  } finally {
-    await parser.destroy().catch(() => {})
-  }
 }
 
 function parseExtractorResponse(raw: any): BrandProfile | null {
@@ -71,38 +60,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 1. Parse multipart body, get the file
-    const formData = await req.formData()
-    const file = formData.get('file')
-    if (!file || !(file instanceof Blob)) {
-      return NextResponse.json(
-        { success: false, error: 'file is required (multipart/form-data field "file")' },
-        { status: 400 }
-      )
-    }
-    const filename = (file as File).name || 'upload.pdf'
-
-    // 2. Extract text from the PDF
-    const arrayBuf = await file.arrayBuffer()
-    const buf = Buffer.from(arrayBuf)
-    let docText = ''
-    try {
-      docText = await extractPdfText(buf)
-    } catch (err: any) {
-      console.error('[extract] pdf-parse failed:', err)
-      return NextResponse.json(
-        { success: false, error: `Could not parse PDF: ${err?.message || 'unknown error'}` },
-        { status: 400 }
-      )
-    }
+    // 1. Read JSON body (filename + already-extracted text)
+    const body = await req.json().catch(() => null)
+    const filename = typeof body?.filename === 'string' ? body.filename : 'upload.pdf'
+    const docText = typeof body?.text === 'string' ? body.text.trim() : ''
     if (!docText) {
       return NextResponse.json(
-        { success: false, error: 'No text could be extracted from this PDF (it may be scanned / image-only — OCR is not supported in this flow).' },
+        { success: false, error: 'No extracted text in request body. Browser-side PDF parsing may have failed.' },
         { status: 400 }
       )
     }
 
-    // 3. Truncate to budget; log a peek so we can verify what the agent saw
+    // 2. Truncate to budget; log a peek so we can verify what the agent saw
     const truncated = docText.length > MAX_DOC_CHARS
     const docToSend = truncated
       ? docText.slice(0, MAX_DOC_CHARS) + '\n\n[…document truncated for context window…]'
@@ -112,7 +81,7 @@ export async function POST(req: NextRequest) {
       `peek="${docText.slice(0, 200).replace(/\s+/g, ' ')}…"`
     )
 
-    // 4. Inline the text into the agent's message
+    // 3. Inline the text into the agent's message
     const message = [
       'Extract a BrandProfile from the document below.',
       "Apply the field-by-field guidance in your instructions. Map synonyms generously when content clearly matches a field's intent; only leave a field empty when the document truly doesn't discuss that concept.",
@@ -122,7 +91,7 @@ export async function POST(req: NextRequest) {
       '--- END DOCUMENT ---',
     ].join('\n')
 
-    // 5. Call Lyzr's synchronous inference endpoint (no assets param)
+    // 4. Call Lyzr's synchronous inference endpoint (no assets param)
     const ctrl = new AbortController()
     const timeoutId = setTimeout(() => ctrl.abort(), 5 * 60 * 1000)
     let lyzrRes: Response
@@ -154,7 +123,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 6. Parse + return
+    // 5. Parse + return
     const lyzrJson = await lyzrRes.json()
     const profile = parseExtractorResponse(lyzrJson)
     if (!profile) {

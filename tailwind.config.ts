@@ -7,6 +7,11 @@ const config = {
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
     './src/**/*.{ts,tsx}',
+    // lib/ holds helpers that return Tailwind utility classes as string
+    // literals (e.g. scoreColorClass -> 'text-studio-scoreGold'). Without
+    // this path the JIT compiler never sees those strings and the classes
+    // get tree-shaken out of the build.
+    './lib/**/*.{ts,tsx}',
   ],
   prefix: '',
   theme: {

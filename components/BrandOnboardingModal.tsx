@@ -10,6 +10,7 @@ import { Loader2, ArrowRight, RotateCcw, FileText, AlertCircle, Sparkles } from 
 import { useBrandProfile } from '@/components/BrandProfileProvider'
 import { BRAND_SAMPLES, BrandProfile, emptyBrandProfile } from '@/lib/brandProfile'
 import { USER_ID_HEADER } from '@/lib/userId'
+import { extractPdfTextsInBrowser } from '@/lib/pdfjs-cdn'
 
 type Mode = 'choice' | 'extracting' | 'edit' | 'applying'
 
@@ -78,16 +79,28 @@ export function BrandOnboardingModal({ open, onOpenChange }: BrandOnboardingModa
     fileInputRef.current?.click()
   }
 
-  const handleFile = async (file: File) => {
+  const handleFiles = async (files: File[]) => {
+    if (!files.length) return
     setError(null)
     setMode('extracting')
     try {
-      const formData = new FormData()
-      formData.append('file', file, file.name)
+      // Parse the PDFs in the browser via CDN-hosted PDF.js. Avoids needing
+      // pdf-parse or pdfjs-dist in the server build, which the Architect
+      // deploy pipeline couldn't install reliably. With multiple files, the
+      // helper wraps each doc with `--- FILE: name ---` markers so the
+      // extractor agent can tell sources apart.
+      const text = await extractPdfTextsInBrowser(files)
+      if (!text) {
+        throw new Error('No text could be extracted from the uploaded PDF(s) (they may be scanned / image-only).')
+      }
+      const filename = files.length === 1 ? files[0].name : files.map(f => f.name).join(', ')
       const res = await fetch('/api/brand-profile/extract', {
         method: 'POST',
-        headers: { [USER_ID_HEADER]: userId },
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+          [USER_ID_HEADER]: userId,
+        },
+        body: JSON.stringify({ filename, text }),
       })
       const json = await res.json()
       if (!json?.success || !json?.data) {
@@ -160,23 +173,25 @@ export function BrandOnboardingModal({ open, onOpenChange }: BrandOnboardingModa
           )}
         </DialogHeader>
 
-        {/* Hidden file input — opened by the Upload button */}
+        {/* Hidden file input — opened by the Upload button. `multiple` lets the
+            user pick more than one brand doc in a single browse. */}
         <input
           ref={fileInputRef}
           type="file"
           accept="application/pdf,application/x-pdf,application/octet-stream,.pdf"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) handleFile(f)
-            e.target.value = ''  // allow re-uploading same file
+            const files = e.target.files
+            if (files && files.length > 0) handleFiles(Array.from(files))
+            e.target.value = ''  // allow re-uploading the same file(s)
           }}
         />
 
         {/* CHOICE — Drop zone for PDF upload, plus Start blank fallback */}
         {mode === 'choice' && (
           <div className="space-y-3 pt-4">
-            <PdfDropZone onPick={handleFilePick} onFile={handleFile} />
+            <PdfDropZone onPick={handleFilePick} onFiles={handleFiles} />
 
             <Button
               onClick={handleStartBlank}
@@ -214,7 +229,7 @@ export function BrandOnboardingModal({ open, onOpenChange }: BrandOnboardingModa
             {/* Large PDF drop zone — same affordance as the choice screen.
                 Click or drop a PDF to re-run the extractor and repopulate the
                 form below with fresh values. */}
-            <PdfDropZone onPick={handleFilePick} onFile={handleFile} />
+            <PdfDropZone onPick={handleFilePick} onFiles={handleFiles} />
 
             {/* Sample loaders — quick way to populate the form for demos /
                 testing. Clicking a sample button replaces the form values. */}
@@ -409,7 +424,7 @@ function Field({ label, required, hint, extractorEmpty, children }: {
 // Reusable PDF drop zone. Used in both choice mode (first-load) and edit mode
 // (re-extract). Each instance owns its own isDragging state so highlighting one
 // doesn't bleed into the other.
-function PdfDropZone({ onPick, onFile }: { onPick: () => void; onFile: (file: File) => void }) {
+function PdfDropZone({ onPick, onFiles }: { onPick: () => void; onFiles: (files: File[]) => void }) {
   const [isDragging, setIsDragging] = useState(false)
   return (
     <div
@@ -422,8 +437,8 @@ function PdfDropZone({ onPick, onFile }: { onPick: () => void; onFile: (file: Fi
       onDrop={(e) => {
         e.preventDefault()
         setIsDragging(false)
-        const f = e.dataTransfer.files?.[0]
-        if (f) onFile(f)
+        const files = e.dataTransfer.files
+        if (files && files.length > 0) onFiles(Array.from(files))
       }}
       className={`w-full rounded-xl border-2 border-dashed px-6 py-12 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
         isDragging
