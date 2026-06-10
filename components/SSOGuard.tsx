@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react"
+import { resolveLocalUserEmail } from "@/lib/userEmail"
 
 interface SSOConfig {
   enabled: boolean
@@ -8,21 +9,57 @@ interface SSOConfig {
   realm?: string
   client_id?: string
   idp_hint?: string
+  admin_emails?: string[]   // NEW: surfaced from server config so client can compute isAdmin
+}
+
+interface SSOContextValue {
+  email: string | null
+  isAdmin: boolean
+  adminEmails: string[]
+}
+
+const SSOContext = createContext<SSOContextValue>({ email: null, isAdmin: false, adminEmails: [] })
+
+export function useSSO(): SSOContextValue {
+  return useContext(SSOContext)
+}
+
+/**
+ * Extracts a usable email from Keycloak's parsed token. Defensive fallback chain:
+ *   1. `email` claim (standard OIDC)
+ *   2. `preferred_username` IF it looks email-shaped (contains '@')
+ *   3. null — caller treats as anonymous (admin check fails closed)
+ *
+ * Logs a console warning if we fall through to (3) so anyone testing on the
+ * deployed app notices Keycloak isn't emitting a usable identity claim.
+ */
+function emailFromKeycloakClaims(claims: any): string | null {
+  if (claims && typeof claims.email === 'string' && claims.email.includes('@')) {
+    return claims.email
+  }
+  if (claims && typeof claims.preferred_username === 'string' && claims.preferred_username.includes('@')) {
+    return claims.preferred_username
+  }
+  console.warn('[brand-access] No usable email claim found in Keycloak token. Admin features disabled.', {
+    sub: claims?.sub,
+    preferred_username: claims?.preferred_username,
+  })
+  return null
 }
 
 export function SSOGuard({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
+  const [contextValue, setContextValue] = useState<SSOContextValue>({ email: null, isAdmin: false, adminEmails: [] })
   const initialised = useRef(false)
 
   useEffect(() => {
     if (initialised.current) return
     initialised.current = true
 
-    // Skip SSO when running inside an iframe (Architect sandbox preview).
-    // The builder shouldn't be gated by Keycloak, and Keycloak's
-    // frame-ancestors CSP blocks the silent-check-sso iframe anyway.
-    // SSO is enforced on the standalone preview URL and deployed URL.
+    // Iframe sandbox path — SSO disabled, but we still want local-dev identity.
     if (window.self !== window.top) {
+      const localEmail = resolveLocalUserEmail()
+      setContextValue({ email: localEmail, isAdmin: false, adminEmails: [] })
       setReady(true)
       return
     }
@@ -30,7 +67,13 @@ export function SSOGuard({ children }: { children: ReactNode }) {
     fetch("/api/sso-config")
       .then<SSOConfig>((r) => r.json())
       .then(async (config) => {
+        const adminEmails = Array.isArray(config.admin_emails) ? config.admin_emails : []
+
         if (!config.enabled) {
+          // Local-dev path — no Keycloak; identity from ?as= query / localStorage / env.
+          const localEmail = resolveLocalUserEmail()
+          const isAdmin = !!localEmail && adminEmails.map(e => e.toLowerCase()).includes(localEmail.toLowerCase())
+          setContextValue({ email: localEmail, isAdmin, adminEmails })
           setReady(true)
           return
         }
@@ -51,26 +94,33 @@ export function SSOGuard({ children }: { children: ReactNode }) {
           const authenticated = await kc.init({
             onLoad: "check-sso",
             checkLoginIframe: false,
+            pkceMethod: "S256",
           })
-
-          if (authenticated) {
-            setReady(true)
-          } else {
+          if (!authenticated) {
             kc.login({
+              redirectUri: window.location.href,
               idpHint: config.idp_hint || undefined,
-              redirectUri: window.location.origin + "/",
             })
+            return
           }
         } catch {
-          // If check-sso fails (network, config), redirect to login
           kc.login({
+            redirectUri: window.location.href,
             idpHint: config.idp_hint || undefined,
-            redirectUri: window.location.origin + "/",
           })
+          return
         }
+
+        const email = emailFromKeycloakClaims(kc.tokenParsed)
+        const isAdmin = !!email && adminEmails.map(e => e.toLowerCase()).includes(email.toLowerCase())
+        setContextValue({ email, isAdmin, adminEmails })
+        setReady(true)
       })
-      .catch(() => {
-        // If /api/sso-config is unreachable, let the app through
+      .catch((err) => {
+        console.error("[SSOGuard] Failed to load SSO config:", err)
+        // Fail open: treat as no-SSO. Local-dev identity still works.
+        const localEmail = resolveLocalUserEmail()
+        setContextValue({ email: localEmail, isAdmin: false, adminEmails: [] })
         setReady(true)
       })
   }, [])
@@ -84,5 +134,5 @@ export function SSOGuard({ children }: { children: ReactNode }) {
     )
   }
 
-  return <>{children}</>
+  return <SSOContext.Provider value={contextValue}>{children}</SSOContext.Provider>
 }
