@@ -1,8 +1,10 @@
 // GET /api/admin/unlock-requests — admin-only listing of unlock requests.
-// Uses an unscoped (skipRLS) model variant since this view spans users.
+// Uses the raw MongoDB collection to bypass lyzr-architect's RLS plugin
+// (which scopes every Mongoose query to ctx.userId — no admin bypass exists
+// in the plugin API).
 
 import { NextRequest, NextResponse } from 'next/server'
-import getBrandUnlockRequestModel from '@/models/brandUnlockRequest'
+import { adminBrandUnlockRequestsCollection } from '@/lib/adminDb'
 import { isAdminEmail } from '@/lib/admin'
 import { USER_EMAIL_HEADER } from '@/lib/userEmail'
 
@@ -21,11 +23,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status') || 'pending'
 
-    const Model = await getBrandUnlockRequestModel({ admin: true })
-    const docs = await Model.find({ status }).sort({ createdAt: 1 })
-    const items = docs.map((d: any) => d.toObject?.() ?? d)
+    const coll = await adminBrandUnlockRequestsCollection()
+    const docs = await coll.find({ status }).sort({ createdAt: 1 }).toArray()
 
-    return NextResponse.json({ success: true, data: items })
+    return NextResponse.json({ success: true, data: docs })
   } catch (err: any) {
     console.error('[API] GET /api/admin/unlock-requests error:', err)
     return NextResponse.json(
