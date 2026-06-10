@@ -11,6 +11,9 @@ import { BrandOnboardingModal } from '@/components/BrandOnboardingModal'
 import { useBrandProfile } from '@/components/BrandProfileProvider'
 import { AvatarDropdown } from '@/components/AvatarDropdown'
 import { AboutModal } from '@/components/AboutModal'
+import { AdminRequestsModal } from '@/components/AdminRequestsModal'
+import { useSSO } from '@/components/SSOGuard'
+import { USER_EMAIL_HEADER } from '@/lib/userEmail'
 import { BookOpen, PenSquare, Wand2, Sparkles, HelpCircle } from 'lucide-react'
 
 // Brand-agnostic clones of the three mode-specific agents. The Vusion-locked
@@ -74,8 +77,35 @@ export default function Page() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [brandModalOpen, setBrandModalOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [adminModalOpen, setAdminModalOpen] = useState(false)
+  const [pendingRequestCount, setPendingRequestCount] = useState(0)
   const sessionIdRef = useRef('')
   const { profile: brandProfile, loading: brandLoading } = useBrandProfile()
+  const { email, isAdmin } = useSSO()
+
+  // Poll the pending-request count every 30s while admin is signed in.
+  useEffect(() => {
+    if (!isAdmin || !email) {
+      setPendingRequestCount(0)
+      return
+    }
+    let cancelled = false
+    const fetchCount = async () => {
+      try {
+        const res = await fetch('/api/admin/unlock-requests?status=pending', {
+          headers: { [USER_EMAIL_HEADER]: email },
+        })
+        if (cancelled) return
+        const json = await res.json()
+        if (json?.success) setPendingRequestCount(json.data?.length ?? 0)
+      } catch {
+        // network blip — leave count as-is
+      }
+    }
+    fetchCount()
+    const t = setInterval(fetchCount, 30_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [isAdmin, email])
 
   // Auto-open the onboarding modal on first visit (no saved profile). The
   // modal has a close button and a Skip path, so the user can dismiss it and
@@ -196,7 +226,13 @@ export default function Page() {
                 <Sparkles className="h-3.5 w-3.5" />
                 <span>Ask</span>
               </button>
-              <AvatarDropdown initials="DD" onConfigureBrand={() => setBrandModalOpen(true)} />
+              <AvatarDropdown
+                initials="DD"
+                onConfigureBrand={() => setBrandModalOpen(true)}
+                isAdmin={isAdmin}
+                pendingRequestCount={pendingRequestCount}
+                onOpenAdminRequests={() => setAdminModalOpen(true)}
+              />
             </div>
           </div>
 
@@ -255,6 +291,23 @@ export default function Page() {
 
         {/* About this app: info modal explaining the architecture and HITL philosophy. */}
         <AboutModal open={aboutOpen} onOpenChange={setAboutOpen} />
+
+        {/* Admin: unlock-request review modal. Only admins ever open this; non-admins never
+            have a path to set adminModalOpen=true, but the conditional mount makes it explicit. */}
+        {adminModalOpen && (
+          <AdminRequestsModal
+            open={adminModalOpen}
+            onOpenChange={setAdminModalOpen}
+            onChange={async () => {
+              if (!email) return
+              const res = await fetch('/api/admin/unlock-requests?status=pending', {
+                headers: { [USER_EMAIL_HEADER]: email },
+              })
+              const json = await res.json()
+              if (json?.success) setPendingRequestCount(json.data?.length ?? 0)
+            }}
+          />
+        )}
       </div>
     </ErrorBoundary>
   )
