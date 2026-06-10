@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Loader2, ArrowRight, RotateCcw, FileText, AlertCircle, Sparkles } from 'lucide-react'
+import { Loader2, ArrowRight, RotateCcw, FileText, AlertCircle, Sparkles, Lock, Clock, Check, X } from 'lucide-react'
 import { useBrandProfile } from '@/components/BrandProfileProvider'
 import { BRAND_SAMPLES, BrandProfile, emptyBrandProfile } from '@/lib/brandProfile'
 import { USER_ID_HEADER } from '@/lib/userId'
@@ -511,34 +511,37 @@ function Field({ label, required, hint, extractorEmpty, children }: {
 
 function UnlockBanner({ mode, denialReason }: { mode: 'none' | 'locked-idle' | 'pending' | 'approved' | 'denied'; denialReason: string | null | undefined }) {
   if (mode === 'none') return null
-  const styles: Record<Exclude<typeof mode, 'none'>, { bg: string; icon: string; text: string }> = {
+  type IconComponent = React.ComponentType<{ className?: string }>
+  const styles: Record<Exclude<typeof mode, 'none'>, { bg: string; Icon: IconComponent; text: string }> = {
     'locked-idle': {
       bg: 'bg-yellow-50 border-yellow-200 text-yellow-900',
-      icon: '⚠️',
+      Icon: Lock,
       text: 'This profile is locked. Click Request access to submit a re-configuration request to AI Foundry.',
     },
     'pending': {
       bg: 'bg-blue-50 border-blue-200 text-blue-900',
-      icon: '⏳',
+      Icon: Clock,
       text: 'Request submitted. Waiting on AI Foundry to approve.',
     },
     'approved': {
       bg: 'bg-green-50 border-green-200 text-green-900',
-      icon: '✅',
+      Icon: Check,
       text: 'Re-configuration approved by AI Foundry. You can edit and save once.',
     },
     'denied': {
       bg: 'bg-red-50 border-red-200 text-red-900',
-      icon: '❌',
+      Icon: X,
       text: denialReason
         ? `Request denied by AI Foundry. Reason: ${denialReason}. You can submit a new request below.`
         : 'Request denied by AI Foundry. You can submit a new request below.',
     },
   }
   const s = styles[mode]
+  const Icon = s.Icon
   return (
-    <div className={`mt-3 mb-1 rounded-lg border px-3 py-2 text-sm ${s.bg}`}>
-      <span className="mr-2">{s.icon}</span>{s.text}
+    <div className={`mt-3 mb-1 rounded-lg border px-3 py-2 text-sm flex items-start gap-2 ${s.bg}`}>
+      <Icon className="h-4 w-4 mt-0.5 flex-shrink-0" />
+      <span>{s.text}</span>
     </div>
   )
 }
