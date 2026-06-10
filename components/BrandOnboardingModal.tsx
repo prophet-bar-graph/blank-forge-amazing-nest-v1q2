@@ -17,6 +17,7 @@ type Mode = 'choice' | 'extracting' | 'edit' | 'applying'
 interface BrandOnboardingModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  dismissable?: boolean
 }
 
 // Inputs that may render arrays as comma-separated text.
@@ -25,7 +26,7 @@ function textToList(text: string): string[] {
   return text.split(',').map(s => s.trim()).filter(Boolean)
 }
 
-export function BrandOnboardingModal({ open, onOpenChange }: BrandOnboardingModalProps) {
+export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }: BrandOnboardingModalProps) {
   const { profile, applyProfile, userId } = useBrandProfile()
   const [mode, setMode] = useState<Mode>('choice')
   const [workingProfile, setWorkingProfile] = useState<BrandProfile>(emptyBrandProfile())
@@ -152,8 +153,15 @@ export function BrandOnboardingModal({ open, onOpenChange }: BrandOnboardingModa
     'Saving…'
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o) }}>
-      <DialogContent className={`${mode === 'edit' ? 'max-w-2xl' : 'max-w-lg'} border-studio-muted/30 bg-studio-page max-h-[90vh] overflow-y-auto`}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (busy) return
+        if (!o && !dismissable) return
+        onOpenChange(o)
+      }}
+    >
+      <DialogContent className={`${mode === 'edit' ? 'max-w-2xl' : 'max-w-lg'} border-studio-muted/30 bg-studio-page max-h-[90vh] overflow-y-auto${!dismissable ? ' [&>button]:hidden' : ''}`}>
         <DialogHeader>
           <DialogTitle className="text-2xl text-studio-ink">{dialogTitle}</DialogTitle>
           {mode === 'choice' && (

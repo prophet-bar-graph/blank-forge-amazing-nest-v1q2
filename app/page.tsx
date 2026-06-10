@@ -250,7 +250,7 @@ export default function Page() {
             open→close transition races during initial render, which is what made every other
             button on the page feel dead. Conditional mount avoids the leak entirely. */}
         {brandModalOpen && (
-          <BrandOnboardingModal open={brandModalOpen} onOpenChange={setBrandModalOpen} />
+          <BrandOnboardingModal open={brandModalOpen} onOpenChange={setBrandModalOpen} dismissable={!!brandProfile} />
         )}
 
         {/* About this app: info modal explaining the architecture and HITL philosophy. */}
