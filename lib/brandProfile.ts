@@ -17,6 +17,12 @@ export interface BrandProfile {
   shortFormSummary: string                 // 1-2 sentence brand summary; fallback for voicePersonaBody on older docs
   brandBibleText?: string                  // Raw parsed text of the most-recently-uploaded brand bible PDF. Injected into the Compose/Refine/Chat prompt prefix so the agent has the full source document, not just the 11 distilled fields. Empty when the profile was created via "Start blank" or "Load sample."
   updatedAt?: string                       // metadata
+  // Access control — added 2026-06-10.
+  // `locked` flips to true after the first successful save. From that point on the
+  // apply route rejects writes unless `unlockGranted` is true (admin-granted, one-time
+  // edit window — consumed on the next save which flips this back to false).
+  locked: boolean
+  unlockGranted: boolean
 }
 
 // Empty / blank profile shape — used as the starting point for the
@@ -37,6 +43,8 @@ export function emptyBrandProfile(): BrandProfile {
     voicePersonaBody: '',
     shortFormSummary: '',
     brandBibleText: '',
+    locked: false,
+    unlockGranted: false,
   }
 }
 
@@ -58,6 +66,8 @@ export const VUSION_SAMPLE_PROFILE: BrandProfile = {
   keyPhrase: 'The Proactive Partner',
   voicePersonaBody: 'Our voice is credible, supportive, and evocative — grounding insights in data, guiding with accessible language, and asking bold questions about what is next. We anchor stories in evidence, bring customers along with clarity, and lead with declarative confidence toward a stronger future.',
   shortFormSummary: "Vusion's Connected Commerce platform unifies in-store operations and intelligence in one place.",
+  locked: false,
+  unlockGranted: false,
 }
 
 export const TPG_SAMPLE_PROFILE: BrandProfile = {
@@ -72,6 +82,8 @@ export const TPG_SAMPLE_PROFILE: BrandProfile = {
   keyPhrase: 'The Conviction Capital',
   voicePersonaBody: 'Our voice carries the conviction of a long-term partner — direct, evidence-led, and grounded in the realities of running a business. We speak with patient confidence, anchor every claim in operating reality, and earn trust by showing our work rather than asserting expertise. When we make a bold call, it is because the data and our experience point the same way.',
   shortFormSummary: 'TPG is a leading global alternative asset management firm investing in companies positioned to lead their categories.',
+  locked: false,
+  unlockGranted: false,
 }
 
 // All available sample profiles, surfaced as toggles in the modal's edit screen.
