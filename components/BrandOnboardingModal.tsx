@@ -556,7 +556,10 @@ function RequestAccessButton({
   onSubmittingChange: (b: boolean) => void
   onSubmitted: (r: UnlockRequestSummary) => void
 }) {
-  const submit = async (reason: string) => {
+  const [expanded, setExpanded] = useState(false)
+  const [reason, setReason] = useState('')
+
+  const submit = async () => {
     if (!email) return
     onSubmittingChange(true)
     try {
@@ -567,7 +570,7 @@ function RequestAccessButton({
           'x-brand-user-id': userId,
           [USER_EMAIL_HEADER]: email,
         },
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason: reason.trim() }),
       })
       const json = await res.json()
       if (res.status === 409) {
@@ -575,23 +578,57 @@ function RequestAccessButton({
           headers: { 'x-brand-user-id': userId, [USER_EMAIL_HEADER]: email },
         }).then(r => r.json())
         if (latest?.success) onSubmitted(latest.data)
-        return
+      } else if (json?.success && json.data) {
+        onSubmitted(json.data)
       }
-      if (json?.success && json.data) onSubmitted(json.data)
     } finally {
       onSubmittingChange(false)
+      setExpanded(false)
+      setReason('')
     }
   }
 
+  if (!expanded) {
+    return (
+      <Button
+        onClick={() => setExpanded(true)}
+        disabled={submitting || !email}
+        className="bg-studio-ink hover:bg-studio-ink text-studio-page h-10 gap-2"
+      >
+        Request access
+        <ArrowRight className="h-4 w-4" />
+      </Button>
+    )
+  }
+
   return (
-    <Button
-      onClick={() => submit('')}
-      disabled={submitting || !email}
-      className="bg-studio-ink hover:bg-studio-ink text-studio-page h-10 gap-2"
-    >
-      Request access
-      <ArrowRight className="h-4 w-4" />
-    </Button>
+    <div className="flex-1 flex flex-col gap-2 max-w-md ml-auto">
+      <Textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value.slice(0, 500))}
+        placeholder="Why do you need to re-configure? (optional)"
+        rows={2}
+        className="bg-white border-studio-muted/30 text-sm rounded-md resize-none"
+      />
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          onClick={() => { setExpanded(false); setReason('') }}
+          variant="ghost"
+          disabled={submitting}
+          className="text-studio-muted/85 hover:text-studio-ink h-9"
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={submit}
+          disabled={submitting || !email}
+          className="bg-studio-ink hover:bg-studio-ink text-studio-page h-9 gap-2"
+        >
+          {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Submit request
+        </Button>
+      </div>
+    </div>
   )
 }
 
