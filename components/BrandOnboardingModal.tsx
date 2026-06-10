@@ -10,9 +10,18 @@ import { Loader2, ArrowRight, RotateCcw, FileText, AlertCircle, Sparkles } from 
 import { useBrandProfile } from '@/components/BrandProfileProvider'
 import { BRAND_SAMPLES, BrandProfile, emptyBrandProfile } from '@/lib/brandProfile'
 import { USER_ID_HEADER } from '@/lib/userId'
+import { USER_EMAIL_HEADER } from '@/lib/userEmail'
+import { useSSO } from '@/components/SSOGuard'
 import { extractPdfTextsInBrowser } from '@/lib/pdfjs-cdn'
+import type { BrandUnlockRequestStatus } from '@/models/brandUnlockRequest'
 
 type Mode = 'choice' | 'extracting' | 'edit' | 'applying'
+
+interface UnlockRequestSummary {
+  _id: string
+  status: BrandUnlockRequestStatus
+  denialReason: string | null
+}
 
 interface BrandOnboardingModalProps {
   open: boolean
@@ -28,6 +37,7 @@ function textToList(text: string): string[] {
 
 export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }: BrandOnboardingModalProps) {
   const { profile, applyProfile, userId } = useBrandProfile()
+  const { isAdmin, email } = useSSO()
   const [mode, setMode] = useState<Mode>('choice')
   const [workingProfile, setWorkingProfile] = useState<BrandProfile>(emptyBrandProfile())
   const [error, setError] = useState<string | null>(null)
@@ -38,6 +48,27 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
   // existing profile) ⟹ placeholders behave normally.
   const [extractedEmpty, setExtractedEmpty] = useState<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [latestRequest, setLatestRequest] = useState<UnlockRequestSummary | null>(null)
+  const [requestSubmitting, setRequestSubmitting] = useState(false)
+
+  // Fetch the latest unlock request whenever the modal opens, so we can show the right banner.
+  useEffect(() => {
+    if (!open) return
+    if (!userId) return
+    let cancelled = false
+    fetch('/api/brand-profile/unlock-request/latest', {
+      headers: {
+        'x-brand-user-id': userId,
+        ...(email ? { [USER_EMAIL_HEADER]: email } : {}),
+      },
+    })
+      .then(r => r.json())
+      .then(json => {
+        if (!cancelled && json?.success) setLatestRequest(json.data)
+      })
+      .catch(() => { /* ignore — banner just won't show */ })
+    return () => { cancelled = true }
+  }, [open, userId, email])
 
   // When the modal opens, derive the initial mode:
   //  - No profile yet (first load): show the choice screen (Skip vs Upload)
@@ -152,6 +183,22 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
     mode === 'edit' ? 'Review your brand profile' :
     'Saving…'
 
+  const profileLocked = !!profile?.locked
+  const profileUnlocked = !!profile?.unlockGranted
+  const showLockState = profileLocked && !profileUnlocked && !isAdmin
+
+  type BannerMode = 'none' | 'locked-idle' | 'pending' | 'approved' | 'denied'
+  let bannerMode: BannerMode = 'none'
+  if (showLockState) {
+    if (latestRequest?.status === 'pending') bannerMode = 'pending'
+    else if (latestRequest?.status === 'denied') bannerMode = 'denied'
+    else bannerMode = 'locked-idle'
+  } else if (profileLocked && profileUnlocked && !isAdmin) {
+    bannerMode = 'approved'
+  }
+
+  const editingDisabled = bannerMode === 'locked-idle' || bannerMode === 'pending' || bannerMode === 'denied'
+
   return (
     <Dialog
       open={open}
@@ -180,6 +227,8 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
             </DialogDescription>
           )}
         </DialogHeader>
+
+        <UnlockBanner mode={bannerMode} denialReason={latestRequest?.denialReason ?? null} />
 
         {/* Hidden file input — opened by the Upload button. `multiple` lets the
             user pick more than one brand doc in a single browse. */}
@@ -234,32 +283,38 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
         {/* EDIT — review + edit BrandProfile fields */}
         {mode === 'edit' && (
           <div className="space-y-4 pt-2">
-            {/* Large PDF drop zone — same affordance as the choice screen.
-                Click or drop a PDF to re-run the extractor and repopulate the
-                form below with fresh values. */}
-            <PdfDropZone onPick={handleFilePick} onFiles={handleFiles} />
+            {/* Large PDF drop zone and sample loaders — hidden when editing is
+                disabled (locked / pending / denied states). */}
+            {!editingDisabled && (
+              <>
+                {/* Large PDF drop zone — same affordance as the choice screen.
+                    Click or drop a PDF to re-run the extractor and repopulate the
+                    form below with fresh values. */}
+                <PdfDropZone onPick={handleFilePick} onFiles={handleFiles} />
 
-            {/* Sample loaders — quick way to populate the form for demos /
-                testing. Clicking a sample button replaces the form values. */}
-            <div className="flex items-center gap-2 flex-wrap pb-3 border-b border-studio-muted/20">
-              <Sparkles className="h-3.5 w-3.5 text-studio-muted/85 flex-shrink-0" />
-              <span className="text-[11px] uppercase tracking-[0.14em] text-studio-muted/85">Load sample</span>
-              {BRAND_SAMPLES.map((s) => (
-                <Button
-                  key={s.id}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleLoadSample(s.profile)}
-                  className="h-7 px-3 text-[12px] border-studio-muted/30 text-studio-muted/90 hover:bg-studio-border/30 hover:text-studio-ink"
-                >
-                  {s.label}
-                </Button>
-              ))}
-              <span className="ml-auto text-[11px] italic text-studio-muted/75">
-                Overwrites current form values. Doesn&rsquo;t save until you click Apply.
-              </span>
-            </div>
+                {/* Sample loaders — quick way to populate the form for demos /
+                    testing. Clicking a sample button replaces the form values. */}
+                <div className="flex items-center gap-2 flex-wrap pb-3 border-b border-studio-muted/20">
+                  <Sparkles className="h-3.5 w-3.5 text-studio-muted/85 flex-shrink-0" />
+                  <span className="text-[11px] uppercase tracking-[0.14em] text-studio-muted/85">Load sample</span>
+                  {BRAND_SAMPLES.map((s) => (
+                    <Button
+                      key={s.id}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleLoadSample(s.profile)}
+                      className="h-7 px-3 text-[12px] border-studio-muted/30 text-studio-muted/90 hover:bg-studio-border/30 hover:text-studio-ink"
+                    >
+                      {s.label}
+                    </Button>
+                  ))}
+                  <span className="ml-auto text-[11px] italic text-studio-muted/75">
+                    Overwrites current form values. Doesn&rsquo;t save until you click Apply.
+                  </span>
+                </div>
+              </>
+            )}
 
             <Field label="Company name" required extractorEmpty={extractedEmpty.has('companyName')}>
               <Input
@@ -267,6 +322,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, companyName: e.target.value })}
                 className="bg-white border-studio-muted/30"
                 placeholder={extractedEmpty.has('companyName') ? undefined : 'e.g. Vusion'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -276,6 +332,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, tagline: e.target.value })}
                 className="bg-white border-studio-muted/30"
                 placeholder={extractedEmpty.has('tagline') ? undefined : 'One-line positioning'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -286,6 +343,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                   onChange={(e) => setWorkingProfile({ ...workingProfile, categoryFrame: e.target.value })}
                   className="bg-white border-studio-muted/30"
                   placeholder={extractedEmpty.has('categoryFrame') ? undefined : 'e.g. Connected Commerce'}
+                  disabled={editingDisabled}
                 />
               </Field>
 
@@ -295,6 +353,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                   onChange={(e) => setWorkingProfile({ ...workingProfile, keyPhrase: e.target.value })}
                   className="bg-white border-studio-muted/30"
                   placeholder={extractedEmpty.has('keyPhrase') ? undefined : 'e.g. The Proactive Partner'}
+                  disabled={editingDisabled}
                 />
               </Field>
             </div>
@@ -309,6 +368,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, voicePersonaBody: e.target.value })}
                 className="bg-white border-studio-muted/30 min-h-[80px]"
                 placeholder={extractedEmpty.has('voicePersonaBody') ? undefined : 'e.g. Our voice is credible, supportive, and evocative — grounding insights in data and bringing customers along with clarity.'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -318,6 +378,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, customerQuest: e.target.value })}
                 className="bg-white border-studio-muted/30 min-h-[60px]"
                 placeholder={extractedEmpty.has('customerQuest') ? undefined : 'What your customer is trying to do'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -327,6 +388,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, promiseOfValue: e.target.value })}
                 className="bg-white border-studio-muted/30 min-h-[80px]"
                 placeholder={extractedEmpty.has('promiseOfValue') ? undefined : 'Core value-promise paragraph'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -336,6 +398,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, callToAction: e.target.value })}
                 className="bg-white border-studio-muted/30"
                 placeholder={extractedEmpty.has('callToAction') ? undefined : 'e.g. Discover more'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -349,6 +412,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, portfolioPillars: textToList(e.target.value) })}
                 className="bg-white border-studio-muted/30"
                 placeholder={extractedEmpty.has('portfolioPillars') ? undefined : 'e.g. Store Ops, Data Commerce, Local eCommerce'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -362,6 +426,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, partnerPillars: textToList(e.target.value) })}
                 className="bg-white border-studio-muted/30"
                 placeholder={extractedEmpty.has('partnerPillars') ? undefined : 'e.g. Designed for People, A Unified Ecosystem'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -371,6 +436,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onChange={(e) => setWorkingProfile({ ...workingProfile, shortFormSummary: e.target.value })}
                 className="bg-white border-studio-muted/30 min-h-[60px]"
                 placeholder={extractedEmpty.has('shortFormSummary') ? undefined : '1-2 sentence summary'}
+                disabled={editingDisabled}
               />
             </Field>
 
@@ -386,18 +452,32 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
                 onClick={handleStartOver}
                 variant="ghost"
                 className="text-studio-muted/85 hover:text-studio-ink gap-2 h-10"
+                disabled={editingDisabled}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 Start over
               </Button>
-              <Button
-                onClick={handleApply}
-                disabled={!workingProfile.companyName?.trim()}
-                className="bg-studio-ink hover:bg-studio-ink text-studio-page h-10 gap-2"
-              >
-                Apply &amp; close
-                <ArrowRight className="h-4 w-4" />
-              </Button>
+
+              {bannerMode === 'pending' ? (
+                <span className="text-sm text-studio-muted italic">Request pending…</span>
+              ) : (bannerMode === 'locked-idle' || bannerMode === 'denied') ? (
+                <RequestAccessButton
+                  userId={userId}
+                  email={email}
+                  submitting={requestSubmitting}
+                  onSubmittingChange={setRequestSubmitting}
+                  onSubmitted={(req) => setLatestRequest(req)}
+                />
+              ) : (
+                <Button
+                  onClick={handleApply}
+                  disabled={!workingProfile.companyName?.trim()}
+                  className="bg-studio-ink hover:bg-studio-ink text-studio-page h-10 gap-2"
+                >
+                  Apply &amp; close
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -426,6 +506,92 @@ function Field({ label, required, hint, extractorEmpty, children }: {
       )}
       {children}
     </div>
+  )
+}
+
+function UnlockBanner({ mode, denialReason }: { mode: 'none' | 'locked-idle' | 'pending' | 'approved' | 'denied'; denialReason: string | null | undefined }) {
+  if (mode === 'none') return null
+  const styles: Record<Exclude<typeof mode, 'none'>, { bg: string; icon: string; text: string }> = {
+    'locked-idle': {
+      bg: 'bg-yellow-50 border-yellow-200 text-yellow-900',
+      icon: '⚠️',
+      text: 'This profile is locked. Click Request access to submit a re-configuration request to AI Foundry.',
+    },
+    'pending': {
+      bg: 'bg-blue-50 border-blue-200 text-blue-900',
+      icon: '⏳',
+      text: 'Request submitted. Waiting on AI Foundry to approve.',
+    },
+    'approved': {
+      bg: 'bg-green-50 border-green-200 text-green-900',
+      icon: '✅',
+      text: 'Re-configuration approved by AI Foundry. You can edit and save once.',
+    },
+    'denied': {
+      bg: 'bg-red-50 border-red-200 text-red-900',
+      icon: '❌',
+      text: denialReason
+        ? `Request denied by AI Foundry. Reason: ${denialReason}. You can submit a new request below.`
+        : 'Request denied by AI Foundry. You can submit a new request below.',
+    },
+  }
+  const s = styles[mode]
+  return (
+    <div className={`mt-3 mb-1 rounded-lg border px-3 py-2 text-sm ${s.bg}`}>
+      <span className="mr-2">{s.icon}</span>{s.text}
+    </div>
+  )
+}
+
+function RequestAccessButton({
+  userId,
+  email,
+  submitting,
+  onSubmittingChange,
+  onSubmitted,
+}: {
+  userId: string
+  email: string | null
+  submitting: boolean
+  onSubmittingChange: (b: boolean) => void
+  onSubmitted: (r: UnlockRequestSummary) => void
+}) {
+  const submit = async (reason: string) => {
+    if (!email) return
+    onSubmittingChange(true)
+    try {
+      const res = await fetch('/api/brand-profile/unlock-request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-brand-user-id': userId,
+          [USER_EMAIL_HEADER]: email,
+        },
+        body: JSON.stringify({ reason }),
+      })
+      const json = await res.json()
+      if (res.status === 409) {
+        const latest = await fetch('/api/brand-profile/unlock-request/latest', {
+          headers: { 'x-brand-user-id': userId, [USER_EMAIL_HEADER]: email },
+        }).then(r => r.json())
+        if (latest?.success) onSubmitted(latest.data)
+        return
+      }
+      if (json?.success && json.data) onSubmitted(json.data)
+    } finally {
+      onSubmittingChange(false)
+    }
+  }
+
+  return (
+    <Button
+      onClick={() => submit('')}
+      disabled={submitting || !email}
+      className="bg-studio-ink hover:bg-studio-ink text-studio-page h-10 gap-2"
+    >
+      Request access
+      <ArrowRight className="h-4 w-4" />
+    </Button>
   )
 }
 
