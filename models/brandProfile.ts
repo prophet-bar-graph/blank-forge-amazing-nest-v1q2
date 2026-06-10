@@ -21,6 +21,9 @@ export default async function getBrandProfileModel() {
       voicePersonaBody: { type: String, default: '' },
       shortFormSummary: { type: String, default: '' },
       brandBibleText: { type: String, default: '' },
+      // Access control flags. Existing docs without these read as false via the default.
+      locked: { type: Boolean, default: false },
+      unlockGranted: { type: Boolean, default: false },
     })
   }
   return _model
