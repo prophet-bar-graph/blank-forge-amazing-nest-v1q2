@@ -3,6 +3,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { type BrandProfile } from '@/lib/brandProfile'
 import { getOrCreateBrowserUserId, USER_ID_HEADER } from '@/lib/userId'
+import { USER_EMAIL_HEADER } from '@/lib/userEmail'
+import { useSSO } from '@/components/SSOGuard'
 
 interface BrandProfileContextValue {
   profile: BrandProfile | null      // null = no profile yet → modal should open
@@ -25,6 +27,7 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
   // Stable per-browser identifier. Computed once on mount; persists in localStorage.
   // Sent as a header on every API call to scope reads/writes to this browser only.
   const [userId, setUserId] = useState<string>('')
+  const { email } = useSSO()
 
   useEffect(() => {
     setUserId(getOrCreateBrowserUserId())
@@ -37,7 +40,10 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
     try {
       const res = await fetch('/api/brand-profile', {
         cache: 'no-store',
-        headers: { [USER_ID_HEADER]: userId },
+        headers: {
+          [USER_ID_HEADER]: userId,
+          ...(email ? { [USER_EMAIL_HEADER]: email } : {}),
+        },
       })
       if (res.status === 404) {
         // No saved profile yet — leave profile null so the placeholder shows
@@ -61,7 +67,7 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
     } finally {
       setLoading(false)
     }
-  }, [userId])
+  }, [userId, email])
 
   useEffect(() => { fetchProfile() }, [fetchProfile])
 
@@ -76,6 +82,7 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
         headers: {
           'Content-Type': 'application/json',
           [USER_ID_HEADER]: userId,
+          ...(email ? { [USER_EMAIL_HEADER]: email } : {}),
         },
         body: JSON.stringify(next),
       })
@@ -102,7 +109,7 @@ export function BrandProfileProvider({ children }: { children: React.ReactNode }
       setError(err?.message || 'network error')
       return null
     }
-  }, [userId])
+  }, [userId, email])
 
   const value = useMemo(
     () => ({ profile, loading, error, userId, refresh: fetchProfile, applyProfile }),
