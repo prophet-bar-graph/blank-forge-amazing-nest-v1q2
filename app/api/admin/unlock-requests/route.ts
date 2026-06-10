@@ -1,9 +1,7 @@
 // GET /api/admin/unlock-requests — admin-only listing of unlock requests.
-// Uses runWithContext({ isAdmin: true }) to bypass per-owner RLS and see
-// requests from all users. Gated by isAdminEmail() — returns 403 otherwise.
+// Uses an unscoped (skipRLS) model variant since this view spans users.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { runWithContext } from 'lyzr-architect'
 import getBrandUnlockRequestModel from '@/models/brandUnlockRequest'
 import { isAdminEmail } from '@/lib/admin'
 import { USER_EMAIL_HEADER } from '@/lib/userEmail'
@@ -23,14 +21,9 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status') || 'pending'
 
-    const items = await runWithContext(
-      { userId: 'admin-query', isAdmin: true },
-      async () => {
-        const Model = await getBrandUnlockRequestModel()
-        const docs = await Model.find({ status }).sort({ createdAt: 1 })
-        return docs.map((d: any) => d.toObject?.() ?? d)
-      }
-    )
+    const Model = await getBrandUnlockRequestModel({ admin: true })
+    const docs = await Model.find({ status }).sort({ createdAt: 1 })
+    const items = docs.map((d: any) => d.toObject?.() ?? d)
 
     return NextResponse.json({ success: true, data: items })
   } catch (err: any) {
