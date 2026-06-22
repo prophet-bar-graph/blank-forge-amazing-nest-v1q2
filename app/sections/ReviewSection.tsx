@@ -258,20 +258,28 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
     }
   }, [pendingCopy, pendingScores, onPendingConsumed])
 
-  const handleRefine = async () => {
-    if (!pastedCopy.trim()) return
+  // Refine the given copy. Iteration is cumulative: "Refine Again" passes the
+  // latest improved copy as `baseline`, which becomes the new "original" the
+  // agent works from (and the new diff/scorecard anchor) so improvements stack
+  // pass over pass. The first pass omits `baseline`, so it refines pastedCopy.
+  // baseline/notes are passed explicitly (not read from state) because setState
+  // is async and wouldn't be flushed by the time we build the prompt.
+  const handleRefine = async (opts?: { baseline?: string; notesOverride?: string[] }) => {
+    const sourceCopy = (opts?.baseline ?? pastedCopy).trim()
+    if (!sourceCopy) return
     setError(null)
     setAllAccepted(false)
     setViewMode('diff')
-    const notesBlock = notes.length
-      ? `\n\nUser Notes (apply as additional guidance for this refinement):\n${notes.map((n, i) => `${i + 1}. ${n}`).join('\n')}`
+    const activeNotes = opts?.notesOverride ?? notes
+    const notesBlock = activeNotes.length
+      ? `\n\nUser Notes (apply as additional guidance for this refinement):\n${activeNotes.map((n, i) => `${i + 1}. ${n}`).join('\n')}`
       : ''
-    const previousBlock = result?.improvedCopy
-      ? `\n\nPrevious Refinement (for context only; refine the ORIGINAL, not this):\n${result.improvedCopy}`
-      : ''
-    const prompt = `${buildBrandContextBlock(brand)}\nChannel: ${channel || 'Non-Specific'}\nAudience: ${audience || 'general'}\nTone Intensity: ${toneIntensity[0]}/10\nLength Preference: ${lengthPref}\n\nOriginal Copy:\n${pastedCopy}${previousBlock}${notesBlock}\n\nReview and improve this copy. Return JSON with mode="review" and data containing: improved_copy (clean revised text only), changes (array of {lens, note} for each change), scorecard (for ORIGINAL), improved_scorecard (for the new refinement). Apply the scoring rules from your instructions: full 0-100 range, 85+ is a high bar, and the always-update + strict-greater rules when any original lens is below 85.`
+    const prompt = `${buildBrandContextBlock(brand)}\nChannel: ${channel || 'Non-Specific'}\nAudience: ${audience || 'general'}\nTone Intensity: ${toneIntensity[0]}/10\nLength Preference: ${lengthPref}\n\nOriginal Copy:\n${sourceCopy}${notesBlock}\n\nReview and improve this copy. Return JSON with mode="review" and data containing: improved_copy (clean revised text only), changes (array of {lens, note} for each change), scorecard (for ORIGINAL), improved_scorecard (for the new refinement). Apply the scoring rules from your instructions: full 0-100 range, 85+ is a high bar, and the always-update + strict-greater rules when any original lens is below 85.`
     const response = await onCallAgent(prompt)
     if (response) {
+      // Promote the refined-from copy to be the displayed original + diff anchor.
+      // No-op on the first pass (sourceCopy === pastedCopy).
+      setPastedCopy(sourceCopy)
       setResult(parseReviewResponse(response))
       setNotes([])
       setNoteDraft('')
@@ -475,7 +483,7 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
 
           <button
             type="button"
-            onClick={handleRefine}
+            onClick={() => handleRefine()}
             disabled={loading || !pastedCopy.trim()}
             className="self-start mt-4 h-10 inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 disabled:text-studio-mutedSoft disabled:cursor-not-allowed group"
           >
@@ -694,8 +702,8 @@ export default function ReviewSection({ channel, audience, onCallAgent, loading,
               type="button"
               onClick={() => {
                 const trimmed = noteDraft.trim()
-                setNotes(trimmed ? [trimmed] : [])
-                handleRefine()
+                // Cumulative: refine the latest improved copy, not the original.
+                handleRefine({ baseline: cleanedImproved, notesOverride: trimmed ? [trimmed] : [] })
               }}
               disabled={loading}
               className="h-10 inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 disabled:text-studio-mutedSoft disabled:cursor-not-allowed group"
