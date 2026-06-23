@@ -45,6 +45,9 @@ function sanitizeProfile(raw: any): Partial<BrandProfile> {
       : [],
     keyPhrase: String(raw?.keyPhrase ?? '').trim(),
     voicePersonaBody: String(raw?.voicePersonaBody ?? '').trim(),
+    voicePrinciples: Array.isArray(raw?.voicePrinciples)
+      ? raw.voicePrinciples.map((s: any) => String(s).trim()).filter(Boolean)
+      : [],
     shortFormSummary: String(raw?.shortFormSummary ?? '').trim(),
     brandBibleText: bibleRaw.slice(0, MAX_BIBLE_CHARS),
   }

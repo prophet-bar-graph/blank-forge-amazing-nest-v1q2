@@ -27,6 +27,7 @@ export default function ExplainSection({ onSwitchToReview, onSwitchToCompose, on
   const PILL_CAP = 4
   const messagePillars = (brand.partnerPillars || []).slice(0, PILL_CAP)
   const portfolioPillars = (brand.portfolioPillars || []).slice(0, PILL_CAP)
+  const voicePrinciples = (brand.voicePrinciples || []).slice(0, PILL_CAP)
 
   return (
     <div className="space-y-12">
@@ -77,6 +78,18 @@ export default function ExplainSection({ onSwitchToReview, onSwitchToCompose, on
       <section className="space-y-5">
         <h2 className="font-bold text-lg text-studio-ink">Our Brand at a Glance</h2>
 
+        {portfolioPillars.length > 0 && (
+          <div>
+            <p className="font-bold text-sm text-studio-ink">Portfolio Pillars</p>
+            <p className="italic text-[13px] text-studio-mutedSoft mt-1 mb-3">What do we offer?</p>
+            <div className="flex flex-wrap gap-2">
+              {portfolioPillars.map(p => (
+                <span key={p} className="px-3 py-1.5 rounded-md bg-studio-card text-[13px] text-studio-ink">{p}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
 
           {/* Overarching Message column. flex flex-col + gap so the chips
@@ -116,12 +129,12 @@ export default function ExplainSection({ onSwitchToReview, onSwitchToCompose, on
                 {voiceBody}
               </p>
             )}
-            {portfolioPillars.length > 0 && (
+            {voicePrinciples.length > 0 && (
               <div className="mt-auto pt-3">
                 <p className="font-bold text-sm text-studio-ink">Voice Principles</p>
                 <p className="italic text-[13px] text-studio-mutedSoft mt-1 mb-3">How should we write to sound consistent and distinct?</p>
                 <div className="flex flex-wrap gap-2">
-                  {portfolioPillars.map(p => (
+                  {voicePrinciples.map(p => (
                     <span key={p} className="px-3 py-1.5 rounded-md bg-studio-card text-[13px] text-studio-ink">{p}</span>
                   ))}
                 </div>

@@ -19,6 +19,7 @@ export function buildBrandContextBlock(p: BrandProfile): string {
     p.portfolioPillars?.length ? `Solutions / products: ${p.portfolioPillars.join('; ')}` : null,
     p.keyPhrase ? `Voice persona: ${p.keyPhrase}` : null,
     p.voicePersonaBody ? `Voice persona description: ${p.voicePersonaBody}` : null,
+    p.voicePrinciples?.length ? `Voice principles: ${p.voicePrinciples.join('; ')}` : null,
     p.shortFormSummary ? `Summary: ${p.shortFormSummary}` : null,
     '',
     "Write in this brand's voice. Reference its products and pillars by name. Do not import vocabulary or examples from other brands you may know about.",

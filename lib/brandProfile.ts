@@ -14,6 +14,7 @@ export interface BrandProfile {
   partnerPillars: string[]                 // value pillars (supporting messages)
   keyPhrase: string                        // voice persona name / linguistic signature
   voicePersonaBody?: string                // RIGHT column body in Brand at a Glance — describes HOW the brand sounds (tone, posture, style). Optional for backward compatibility with docs created before this field existed; UI falls back to shortFormSummary when empty.
+  voicePrinciples?: string[]               // short voice/tone principles (e.g. "Clear", "Confident", "Human"). Optional for backward compatibility with docs created before this field existed.
   shortFormSummary: string                 // 1-2 sentence brand summary; fallback for voicePersonaBody on older docs
   brandBibleText?: string                  // Raw parsed text of the most-recently-uploaded brand bible PDF. Injected into the Compose/Refine/Chat prompt prefix so the agent has the full source document, not just the 11 distilled fields. Empty when the profile was created via "Start blank" or "Load sample."
   updatedAt?: string                       // metadata
@@ -41,6 +42,7 @@ export function emptyBrandProfile(): BrandProfile {
     partnerPillars: [],
     keyPhrase: '',
     voicePersonaBody: '',
+    voicePrinciples: [],
     shortFormSummary: '',
     brandBibleText: '',
     locked: false,
@@ -65,6 +67,7 @@ export const VUSION_SAMPLE_PROFILE: BrandProfile = {
   partnerPillars: ['Designed for People', 'A Unified Ecosystem', 'Inspired Partnerships', 'Positive Commerce'],
   keyPhrase: 'The Proactive Partner',
   voicePersonaBody: 'Our voice is credible, supportive, and evocative — grounding insights in data, guiding with accessible language, and asking bold questions about what is next. We anchor stories in evidence, bring customers along with clarity, and lead with declarative confidence toward a stronger future.',
+  voicePrinciples: ['Credible', 'Supportive', 'Evocative', 'Forward-looking'],
   shortFormSummary: "Vusion's Connected Commerce platform unifies in-store operations and intelligence in one place.",
   locked: false,
   unlockGranted: false,
@@ -81,6 +84,7 @@ export const TPG_SAMPLE_PROFILE: BrandProfile = {
   partnerPillars: ['Hands-on partnership', 'Operational excellence', 'Responsible growth', 'Founder alignment'],
   keyPhrase: 'The Conviction Capital',
   voicePersonaBody: 'Our voice carries the conviction of a long-term partner — direct, evidence-led, and grounded in the realities of running a business. We speak with patient confidence, anchor every claim in operating reality, and earn trust by showing our work rather than asserting expertise. When we make a bold call, it is because the data and our experience point the same way.',
+  voicePrinciples: ['Direct', 'Evidence-led', 'Patient', 'Grounded'],
   shortFormSummary: 'TPG is a leading global alternative asset management firm investing in companies positioned to lead their categories.',
   locked: false,
   unlockGranted: false,
