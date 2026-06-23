@@ -14,11 +14,13 @@ interface SSOConfig {
 
 interface SSOContextValue {
   email: string | null
+  givenName: string | null
+  familyName: string | null
   isAdmin: boolean
   adminEmails: string[]
 }
 
-const SSOContext = createContext<SSOContextValue>({ email: null, isAdmin: false, adminEmails: [] })
+const SSOContext = createContext<SSOContextValue>({ email: null, givenName: null, familyName: null, isAdmin: false, adminEmails: [] })
 
 export function useSSO(): SSOContextValue {
   return useContext(SSOContext)
@@ -47,9 +49,16 @@ function emailFromKeycloakClaims(claims: any): string | null {
   return null
 }
 
+function namesFromKeycloakClaims(claims: any): { givenName: string | null; familyName: string | null } {
+  return {
+    givenName: (typeof claims?.given_name === 'string' ? claims.given_name : null) || null,
+    familyName: (typeof claims?.family_name === 'string' ? claims.family_name : null) || null,
+  }
+}
+
 export function SSOGuard({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
-  const [contextValue, setContextValue] = useState<SSOContextValue>({ email: null, isAdmin: false, adminEmails: [] })
+  const [contextValue, setContextValue] = useState<SSOContextValue>({ email: null, givenName: null, familyName: null, isAdmin: false, adminEmails: [] })
   const initialised = useRef(false)
 
   useEffect(() => {
@@ -59,7 +68,7 @@ export function SSOGuard({ children }: { children: ReactNode }) {
     // Iframe sandbox path — SSO disabled, but we still want local-dev identity.
     if (window.self !== window.top) {
       const localEmail = resolveLocalUserEmail()
-      setContextValue({ email: localEmail, isAdmin: false, adminEmails: [] })
+      setContextValue({ email: localEmail, givenName: null, familyName: null, isAdmin: false, adminEmails: [] })
       setReady(true)
       return
     }
@@ -73,7 +82,7 @@ export function SSOGuard({ children }: { children: ReactNode }) {
           // Local-dev path — no Keycloak; identity from ?as= query / localStorage / env.
           const localEmail = resolveLocalUserEmail()
           const isAdmin = !!localEmail && adminEmails.map(e => e.toLowerCase()).includes(localEmail.toLowerCase())
-          setContextValue({ email: localEmail, isAdmin, adminEmails })
+          setContextValue({ email: localEmail, givenName: null, familyName: null, isAdmin, adminEmails })
           setReady(true)
           return
         }
@@ -112,15 +121,16 @@ export function SSOGuard({ children }: { children: ReactNode }) {
         }
 
         const email = emailFromKeycloakClaims(kc.tokenParsed)
+        const { givenName, familyName } = namesFromKeycloakClaims(kc.tokenParsed)
         const isAdmin = !!email && adminEmails.map(e => e.toLowerCase()).includes(email.toLowerCase())
-        setContextValue({ email, isAdmin, adminEmails })
+        setContextValue({ email, givenName, familyName, isAdmin, adminEmails })
         setReady(true)
       })
       .catch((err) => {
         console.error("[SSOGuard] Failed to load SSO config:", err)
         // Fail open: treat as no-SSO. Local-dev identity still works.
         const localEmail = resolveLocalUserEmail()
-        setContextValue({ email: localEmail, isAdmin: false, adminEmails: [] })
+        setContextValue({ email: localEmail, givenName: null, familyName: null, isAdmin: false, adminEmails: [] })
         setReady(true)
       })
   }, [])

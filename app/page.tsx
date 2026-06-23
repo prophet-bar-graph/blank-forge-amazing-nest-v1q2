@@ -15,6 +15,7 @@ import { AdminRequestsModal } from '@/components/AdminRequestsModal'
 import { useSSO } from '@/components/SSOGuard'
 import { USER_EMAIL_HEADER } from '@/lib/userEmail'
 import { BookOpen, PenSquare, Wand2, Sparkles, HelpCircle } from 'lucide-react'
+import { getInitials } from '@/lib/userInitials'
 
 // Brand-agnostic clones of the three mode-specific agents. The Vusion-locked
 // originals had a KNOWLEDGE_BASE feature pointing at Vusion's RAG; these
@@ -81,7 +82,7 @@ export default function Page() {
   const [pendingRequestCount, setPendingRequestCount] = useState(0)
   const sessionIdRef = useRef('')
   const { profile: brandProfile, loading: brandLoading } = useBrandProfile()
-  const { email, isAdmin } = useSSO()
+  const { email, isAdmin, givenName, familyName } = useSSO()
 
   // Poll the pending-request count every 30s while admin is signed in.
   useEffect(() => {
@@ -227,7 +228,7 @@ export default function Page() {
                 <span>Ask</span>
               </button>
               <AvatarDropdown
-                initials="DD"
+                initials={getInitials(givenName, familyName, isAdmin)}
                 onConfigureBrand={() => setBrandModalOpen(true)}
                 isAdmin={isAdmin}
                 pendingRequestCount={pendingRequestCount}
