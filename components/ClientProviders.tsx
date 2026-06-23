@@ -3,6 +3,7 @@
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { AgentInterceptorProvider } from '@/components/AgentInterceptorProvider'
 import { BrandProfileProvider } from '@/components/BrandProfileProvider'
+import { ChatHistoryProvider } from '@/components/ChatHistoryProvider'
 import { SSOGuard } from '@/components/SSOGuard'
 
 export default function ClientProviders({ children }: { children: React.ReactNode }) {
@@ -11,7 +12,9 @@ export default function ClientProviders({ children }: { children: React.ReactNod
       <SSOGuard>
         <AgentInterceptorProvider>
           <BrandProfileProvider>
-            {children}
+            <ChatHistoryProvider>
+              {children}
+            </ChatHistoryProvider>
           </BrandProfileProvider>
         </AgentInterceptorProvider>
       </SSOGuard>
