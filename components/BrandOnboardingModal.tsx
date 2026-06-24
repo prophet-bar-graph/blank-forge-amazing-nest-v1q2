@@ -228,7 +228,15 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
           )}
         </DialogHeader>
 
-        <UnlockBanner mode={bannerMode} denialReason={latestRequest?.denialReason ?? null} />
+        <UnlockBanner
+          mode={bannerMode}
+          denialReason={latestRequest?.denialReason ?? null}
+          userId={userId}
+          email={email}
+          submitting={requestSubmitting}
+          onSubmittingChange={setRequestSubmitting}
+          onSubmitted={(req) => setLatestRequest(req)}
+        />
 
         {/* Hidden file input — opened by the Upload button. `multiple` lets the
             user pick more than one brand doc in a single browse. */}
@@ -430,6 +438,20 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
               />
             </Field>
 
+            <Field
+              label="Voice principles"
+              hint="Short voice / tone principles (comma-separated)"
+              extractorEmpty={extractedEmpty.has('voicePrinciples')}
+            >
+              <Input
+                value={listToText(workingProfile.voicePrinciples)}
+                onChange={(e) => setWorkingProfile({ ...workingProfile, voicePrinciples: textToList(e.target.value) })}
+                className="bg-white border-studio-muted/30"
+                placeholder={extractedEmpty.has('voicePrinciples') ? undefined : 'e.g. Clear, Confident, Human'}
+                disabled={editingDisabled}
+              />
+            </Field>
+
             <Field label="Short brand summary" extractorEmpty={extractedEmpty.has('shortFormSummary')}>
               <Textarea
                 value={workingProfile.shortFormSummary}
@@ -461,13 +483,7 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
               {bannerMode === 'pending' ? (
                 <span className="text-sm text-studio-muted italic">Request pending…</span>
               ) : (bannerMode === 'locked-idle' || bannerMode === 'denied') ? (
-                <RequestAccessButton
-                  userId={userId}
-                  email={email}
-                  submitting={requestSubmitting}
-                  onSubmittingChange={setRequestSubmitting}
-                  onSubmitted={(req) => setLatestRequest(req)}
-                />
+                <span />
               ) : (
                 <Button
                   onClick={handleApply}
@@ -509,14 +525,30 @@ function Field({ label, required, hint, extractorEmpty, children }: {
   )
 }
 
-function UnlockBanner({ mode, denialReason }: { mode: 'none' | 'locked-idle' | 'pending' | 'approved' | 'denied'; denialReason: string | null | undefined }) {
+function UnlockBanner({
+  mode,
+  denialReason,
+  userId,
+  email,
+  submitting,
+  onSubmittingChange,
+  onSubmitted,
+}: {
+  mode: 'none' | 'locked-idle' | 'pending' | 'approved' | 'denied'
+  denialReason: string | null | undefined
+  userId: string
+  email: string | null
+  submitting: boolean
+  onSubmittingChange: (b: boolean) => void
+  onSubmitted: (r: UnlockRequestSummary) => void
+}) {
   if (mode === 'none') return null
   type IconComponent = React.ComponentType<{ className?: string }>
   const styles: Record<Exclude<typeof mode, 'none'>, { bg: string; Icon: IconComponent; text: string }> = {
     'locked-idle': {
       bg: 'bg-yellow-50 border-yellow-200 text-yellow-900',
       Icon: Lock,
-      text: 'This profile is locked. Click Request access to submit a re-configuration request to AI Foundry.',
+      text: 'This profile is locked. Submit a re-configuration request to AI Foundry below.',
     },
     'pending': {
       bg: 'bg-blue-50 border-blue-200 text-blue-900',
@@ -532,16 +564,29 @@ function UnlockBanner({ mode, denialReason }: { mode: 'none' | 'locked-idle' | '
       bg: 'bg-red-50 border-red-200 text-red-900',
       Icon: X,
       text: denialReason
-        ? `Request denied by AI Foundry. Reason: ${denialReason}. You can submit a new request below.`
-        : 'Request denied by AI Foundry. You can submit a new request below.',
+        ? `Request denied by AI Foundry. Reason: ${denialReason}`
+        : 'Request denied by AI Foundry.',
     },
   }
   const s = styles[mode]
   const Icon = s.Icon
   return (
-    <div className={`mt-3 mb-1 rounded-lg border px-3 py-2 text-sm flex items-start gap-2 ${s.bg}`}>
-      <Icon className="h-4 w-4 mt-0.5 flex-shrink-0" />
-      <span>{s.text}</span>
+    <div className={`mt-3 mb-3 rounded-lg border px-3 py-3 text-sm ${s.bg}`}>
+      <div className="flex items-center justify-center gap-2 mb-3">
+        <Icon className="h-4 w-4 flex-shrink-0" />
+        <span>{s.text}</span>
+      </div>
+      {(mode === 'locked-idle' || mode === 'denied') && (
+        <div className="flex justify-center">
+          <RequestAccessButton
+            userId={userId}
+            email={email}
+            submitting={submitting}
+            onSubmittingChange={onSubmittingChange}
+            onSubmitted={onSubmitted}
+          />
+        </div>
+      )}
     </div>
   )
 }

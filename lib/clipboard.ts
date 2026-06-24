@@ -48,6 +48,62 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 /**
+ * Copy rich text (formatted) to clipboard, with an iframe-safe fallback.
+ * Writes both text/html (formatting preserved when pasted into email/docs) and
+ * text/plain (clean fallback). Returns true if any copy method succeeded.
+ * @param html - HTML representation (formatting)
+ * @param plain - plain-text representation (fallback)
+ */
+export async function copyRichText(html: string, plain: string): Promise<boolean> {
+  // Modern async Clipboard API — works outside iframes.
+  if (
+    navigator.clipboard &&
+    typeof (navigator.clipboard as any).write === 'function' &&
+    typeof ClipboardItem !== 'undefined'
+  ) {
+    try {
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      })
+      await navigator.clipboard.write([item])
+      return true
+    } catch {
+      // Blocked (likely in an iframe) — fall through to the selection fallback.
+    }
+  }
+
+  // Fallback: select a hidden rich element and execCommand('copy'). The browser
+  // serializes the selection as text/html, so formatting is preserved.
+  try {
+    const container = document.createElement('div')
+    container.innerHTML = html
+    container.setAttribute('contenteditable', 'true')
+    container.style.position = 'fixed'
+    container.style.top = '0'
+    container.style.left = '0'
+    container.style.opacity = '0'
+    container.style.pointerEvents = 'none'
+    document.body.appendChild(container)
+
+    const range = document.createRange()
+    range.selectNodeContents(container)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+
+    const ok = document.execCommand('copy')
+    sel?.removeAllRanges()
+    document.body.removeChild(container)
+    if (ok) return true
+  } catch {
+    // fall through to plain-text copy
+  }
+
+  return copyToClipboard(plain)
+}
+
+/**
  * React hook for clipboard copy with status
  */
 export function useCopyToClipboard(): [

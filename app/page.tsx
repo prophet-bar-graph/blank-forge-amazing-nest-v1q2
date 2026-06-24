@@ -9,12 +9,16 @@ import ExplainSection from './sections/ExplainSection'
 import CommandPalette from '@/components/CommandPalette'
 import { BrandOnboardingModal } from '@/components/BrandOnboardingModal'
 import { useBrandProfile } from '@/components/BrandProfileProvider'
+import { useChatHistory } from '@/components/ChatHistoryProvider'
+import { ChatHistorySidebar } from '@/components/ChatHistorySidebar'
+import { VersionHistory } from '@/components/VersionHistory'
 import { AvatarDropdown } from '@/components/AvatarDropdown'
 import { AboutModal } from '@/components/AboutModal'
 import { AdminRequestsModal } from '@/components/AdminRequestsModal'
 import { useSSO } from '@/components/SSOGuard'
 import { USER_EMAIL_HEADER } from '@/lib/userEmail'
-import { BookOpen, PenSquare, Wand2, Sparkles, HelpCircle } from 'lucide-react'
+import { BookOpen, PenSquare, Wand2, Sparkles, HelpCircle, Menu, Plus } from 'lucide-react'
+import { getInitials } from '@/lib/userInitials'
 
 // Brand-agnostic clones of the three mode-specific agents. The Vusion-locked
 // originals had a KNOWLEDGE_BASE feature pointing at Vusion's RAG; these
@@ -74,14 +78,23 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [pendingRefineCopy, setPendingRefineCopy] = useState<string | null>(null)
   const [pendingRefineScores, setPendingRefineScores] = useState<{ voice: number; messaging: number; strategy: number } | null>(null)
+  const [pendingReopen, setPendingReopen] = useState<{ copy: string; scores: { voice: number; messaging: number; strategy: number } | null; changes: { text: string; lens: string }[]; overallNote: string } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [brandModalOpen, setBrandModalOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [adminModalOpen, setAdminModalOpen] = useState(false)
   const [pendingRequestCount, setPendingRequestCount] = useState(0)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Bumped on "New chat" to remount (reset) the Compose/Refine sections. Keyed
+  // separately from activeChatId because (a) createChat sets activeChatId
+  // mid-generation — keying Compose on that would wipe freshly generated copy,
+  // and (b) "New refine chat" must remount even when no chat is active.
+  const [composeNonce, setComposeNonce] = useState(0)
+  const [refineNonce, setRefineNonce] = useState(0)
   const sessionIdRef = useRef('')
   const { profile: brandProfile, loading: brandLoading } = useBrandProfile()
-  const { email, isAdmin } = useSSO()
+  const { loadChat, loadVersion, deleteVersion, startNewChat } = useChatHistory()
+  const { email, isAdmin, givenName, familyName } = useSSO()
 
   // Poll the pending-request count every 30s while admin is signed in.
   useEffect(() => {
@@ -143,6 +156,81 @@ export default function Page() {
     setPendingRefineScores(null)
   }, [])
 
+  const consumeReopen = useCallback(() => setPendingReopen(null), [])
+
+  // Open a saved chat: load it and hydrate Refine's result view with the latest
+  // saved copy + scores + detail, then switch to the Refine tab.
+  const handleSelectChat = useCallback(async (id: string) => {
+    const loaded = await loadChat(id)
+    if (loaded) {
+      setPendingRefineCopy(null)
+      setPendingRefineScores(null)
+      setPendingReopen(loaded)
+    }
+    setActiveTab('refine')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [loadChat])
+
+  // Jump to a specific saved version from the edit-history timeline: load it
+  // into Refine and switch to the Refine tab.
+  const handleSelectVersion = useCallback((index: number) => {
+    const loaded = loadVersion(index)
+    if (loaded) {
+      setPendingRefineCopy(null)
+      setPendingRefineScores(null)
+      setPendingReopen(loaded)
+    }
+    setActiveTab('refine')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [loadVersion])
+
+  // New chat from Compose: clear the active chat + pending copy, reset Compose.
+  const handleNewCompose = useCallback(() => {
+    startNewChat()
+    setPendingRefineCopy(null)
+    setPendingRefineScores(null)
+    setPendingReopen(null)
+    setComposeNonce(n => n + 1)
+    setActiveTab('compose')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [startNewChat])
+
+  // New chat from Refine: clear the active chat + pending copy and stay on
+  // Refine with a fresh empty paste state (bump refineNonce to force a remount
+  // even when no chat was active).
+  const handleNewRefine = useCallback(() => {
+    startNewChat()
+    setPendingRefineCopy(null)
+    setPendingRefineScores(null)
+    setPendingReopen(null)
+    setRefineNonce(n => n + 1)
+    setActiveTab('refine')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [startNewChat])
+
+  // Delete a version from the edit-history timeline. Loads the new current
+  // version into Refine, or resets to a fresh Refine if the chat was emptied.
+  const handleDeleteVersion = useCallback(async (index: number) => {
+    const next = await deleteVersion(index)
+    if (next) {
+      setPendingRefineCopy(null)
+      setPendingRefineScores(null)
+      setPendingReopen(next)
+    } else {
+      handleNewRefine()
+    }
+  }, [deleteVersion, handleNewRefine])
+
+  // Tab switch. Going Refine → Compose means the user wants to start a new copy,
+  // so it resets to a fresh chat (same as "New chat"). Other switches just navigate.
+  const handleTabClick = useCallback((key: TabKey) => {
+    if (key === 'compose' && activeTab === 'refine') {
+      handleNewCompose()
+      return
+    }
+    setActiveTab(key)
+  }, [activeTab, handleNewCompose])
+
   // Reset scroll on any tab switch so the user always lands at the top of the new view.
   useEffect(() => {
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 })
@@ -161,8 +249,10 @@ export default function Page() {
     }
   }, [])
 
-  const handleCallAgent = useCallback(async (prompt: string, agentId: string): Promise<any> => {
-    setLoading(true)
+  // `quiet` skips the global loading toggle — used for background re-scoring so
+  // the document view isn't replaced by the loading skeleton.
+  const handleCallAgent = useCallback(async (prompt: string, agentId: string, quiet = false): Promise<any> => {
+    if (!quiet) setLoading(true)
     try {
       const result = await callAIAgent(prompt, agentId, { session_id: sessionIdRef.current })
       if (result.success) {
@@ -175,13 +265,16 @@ export default function Page() {
     } catch {
       return null
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }, [])
 
   const onCompose = useCallback((prompt: string) => handleCallAgent(prompt, COMPOSE_AGENT_ID), [handleCallAgent])
   const onRefine  = useCallback((prompt: string) => handleCallAgent(prompt, REFINE_AGENT_ID),  [handleCallAgent])
   const onChat    = useCallback((prompt: string) => handleCallAgent(prompt, CHAT_AGENT_ID),    [handleCallAgent])
+  // Quiet refine-agent call for re-scoring an edited copy (reads the returned
+  // `scorecard`, i.e. the score of the supplied copy, without a visible reload).
+  const onScore   = useCallback((prompt: string) => handleCallAgent(prompt, REFINE_AGENT_ID, true), [handleCallAgent])
 
   const companyName = brandProfile?.companyName || '[Brand]'
 
@@ -192,17 +285,30 @@ export default function Page() {
         <header>
           <div className="max-w-[1400px] mx-auto px-2 pt-4 pb-3 flex items-start justify-between gap-8">
             <div className="space-y-2">
-              <a
-                href="https://maia.prophet.com/agent-library"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-baseline gap-2.5 hover:opacity-70 transition-opacity"
-                title="Open MAIA Agent Library in a new tab"
-              >
-                <span className="font-serif italic font-bold text-[20px] text-studio-ink leading-none">{companyName}</span>
-                <span className="text-studio-mutedSoft text-lg font-light leading-none">|</span>
-                <span className="font-sans font-bold tracking-tight text-[18px] text-studio-ink leading-none">MAIA</span>
-              </a>
+              {/* Brand line — hamburger inline with the company name / MAIA. */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(true)}
+                  aria-label="Open chat history"
+                  title="Chat history"
+                  className="-ml-1 p-1 rounded-md text-studio-mutedSoft hover:text-studio-ink hover:bg-studio-cardSubtle transition-colors"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                <a
+                  href="https://maia.prophet.com/agent-library"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-baseline gap-2.5 hover:opacity-70 transition-opacity"
+                  title="Open MAIA Agent Library in a new tab"
+                >
+                  <span className="font-serif italic font-bold text-[20px] text-studio-ink leading-none">{companyName}</span>
+                  <span className="text-studio-mutedSoft text-lg font-light leading-none">|</span>
+                  <span className="font-sans font-bold tracking-tight text-[18px] text-studio-ink leading-none">MAIA</span>
+                </a>
+              </div>
+              {/* Title row — aligned to the container left edge (with the tabs below). */}
               <div className="flex items-center gap-2">
                 <h1 className="font-sans font-bold text-[26px] text-studio-ink leading-tight">The Writing Studio</h1>
                 <button
@@ -227,7 +333,7 @@ export default function Page() {
                 <span>Ask</span>
               </button>
               <AvatarDropdown
-                initials="DD"
+                initials={getInitials(givenName, familyName, isAdmin)}
                 onConfigureBrand={() => setBrandModalOpen(true)}
                 isAdmin={isAdmin}
                 pendingRequestCount={pendingRequestCount}
@@ -236,16 +342,17 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Tab nav — small icons + pill active state */}
+          {/* Tab nav — small icons + pill active state. A contextual "New chat"
+              button sits on the right for the Compose/Refine tabs. */}
           <div className="max-w-[1400px] mx-auto px-2 pb-3">
-            <div className="flex gap-1">
+            <div className="flex items-center gap-1">
               {TABS.map(tab => {
                 const isActive = activeTab === tab.key
                 const Icon = tab.Icon
                 return (
                   <button
                     key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
+                    onClick={() => handleTabClick(tab.key)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors text-sm ${
                       isActive
                         ? 'bg-studio-card text-studio-ink font-medium'
@@ -257,6 +364,16 @@ export default function Page() {
                   </button>
                 )
               })}
+              {(activeTab === 'compose' || activeTab === 'refine') && (
+                <button
+                  onClick={activeTab === 'compose' ? handleNewCompose : handleNewRefine}
+                  title={activeTab === 'compose' ? 'Start a new compose chat' : 'Start a new refine chat'}
+                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-studio-mutedSoft hover:text-studio-ink hover:bg-studio-cardSubtle transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>New chat</span>
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -264,10 +381,10 @@ export default function Page() {
         {/* Main content */}
         <main className="max-w-[1400px] mx-auto px-2 py-4">
           {activeTab === 'compose' && (
-            <WriteSection channel={channel} audience={audience} onCallAgent={onCompose} loading={loading} onSendToRefine={sendToRefine} onChannelChange={setChannel} onAudienceChange={setAudience} />
+            <WriteSection key={`compose-${composeNonce}`} channel={channel} audience={audience} onCallAgent={onCompose} loading={loading} onSendToRefine={sendToRefine} onChannelChange={setChannel} onAudienceChange={setAudience} />
           )}
           {activeTab === 'refine' && (
-            <ReviewSection channel={channel} audience={audience} onCallAgent={onRefine} loading={loading} pendingCopy={pendingRefineCopy} pendingScores={pendingRefineScores} onPendingConsumed={consumePending} onChannelChange={setChannel} onAudienceChange={setAudience} />
+            <ReviewSection key={`refine-${refineNonce}`} channel={channel} audience={audience} onCallAgent={onRefine} onScore={onScore} loading={loading} pendingCopy={pendingRefineCopy} pendingScores={pendingRefineScores} onPendingConsumed={consumePending} reopenedVersion={pendingReopen} onReopenConsumed={consumeReopen} onChannelChange={setChannel} onAudienceChange={setAudience} />
           )}
           {activeTab === 'learn' && (
             <ExplainSection
@@ -277,6 +394,18 @@ export default function Page() {
             />
           )}
         </main>
+
+        {/* Edit history timeline — saved versions of the active chat */}
+        {activeTab === 'refine' && <VersionHistory onSelectVersion={handleSelectVersion} onDeleteVersion={handleDeleteVersion} />}
+
+        {/* Chat history sidebar */}
+        <ChatHistorySidebar
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          onSelectChat={handleSelectChat}
+          onNewCompose={handleNewCompose}
+          onNewRefine={handleNewRefine}
+        />
 
         {/* Command palette */}
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} onCallAgent={onChat} loading={loading} />

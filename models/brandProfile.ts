@@ -21,6 +21,7 @@ export default async function getBrandProfileModel() {
       partnerPillars: { type: [String], default: [] },
       keyPhrase: { type: String, default: '' },
       voicePersonaBody: { type: String, default: '' },
+      voicePrinciples: { type: [String], default: [] },
       shortFormSummary: { type: String, default: '' },
       brandBibleText: { type: String, default: '' },
       locked: { type: Boolean, default: false },
