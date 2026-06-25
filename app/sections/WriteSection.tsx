@@ -334,6 +334,7 @@ export default function WriteSection({
   const [mandatories, setMandatories] = useState<string[]>([]);
   const [tone, setTone] = useState(5);
   const [result, setResult] = useState<WriteResult | null>(null);
+  const [prevResult, setPrevResult] = useState<WriteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [regeneratingDiff, setRegeneratingDiff] = useState<string | null>(null);
@@ -344,6 +345,10 @@ export default function WriteSection({
   const handleGenerate = async () => {
     if (!contentObjective.trim() || !supportingMessages.trim()) return;
     setError(null);
+    // Store current result before starting new generation, so we can restore it on cancel
+    if (result) {
+      setPrevResult(result);
+    }
     const prompt = [
       buildBrandContextBlock(brand),
       `Channel: ${channel || "Non-Specific"}`,
@@ -365,16 +370,25 @@ export default function WriteSection({
       // Check if the response indicates cancellation
       if (response.error === 'Polling cancelled') {
         setError(null); // Don't show an error for cancellation
+        // Restore previous result on cancel
+        if (prevResult) {
+          setResult(prevResult);
+        }
         return;
       }
       const parsed = parseWriteResponse(response);
       setResult(parsed);
+      setPrevResult(null); // Clear prevResult since we have a new successful generation
       setCarouselIndex(0);
       // Variations are kept in state during composition. A chat is only created
       // when the user explicitly sends a variant to Refine, which keeps the
       // sidebar clean and only shows work that's been actively refined.
     } else {
       setError("Failed to generate variants. Please try again.");
+      // Restore previous result on error
+      if (prevResult) {
+        setResult(prevResult);
+      }
     }
   };
 
@@ -671,7 +685,7 @@ export default function WriteSection({
             )}
 
             {/* Loading state */}
-            {loading && !result && (
+            {loading && (
               <div className="flex-1 flex flex-col gap-3">
                 <p className="text-sm">
                   <LoadingWords
@@ -687,7 +701,7 @@ export default function WriteSection({
             )}
 
             {/* Result state — single variant */}
-            {result && enrichedVariations.length > 0 && activeVariant && (
+            {!loading && result && enrichedVariations.length > 0 && activeVariant && (
               <div className="flex-1 flex flex-col min-h-0">
                 <VariantCard
                   key={activeVariant.differentiator || safeIndex}
@@ -720,7 +734,7 @@ export default function WriteSection({
               </div>
             )}
 
-            {result && enrichedVariations.length === 0 && (
+            {!loading && result && enrichedVariations.length === 0 && (
               <div className="flex-1 flex items-center justify-center text-center px-6">
                 <p className="text-sm text-studio-muted">
                   No variations parsed from the response. Check the agent log.
