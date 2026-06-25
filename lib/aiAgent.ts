@@ -84,7 +84,7 @@ const POLL_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 export async function callAIAgent(
   message: string,
   agent_id: string,
-  options?: { user_id?: string; session_id?: string; assets?: string[] }
+  options?: { user_id?: string; session_id?: string; assets?: string[]; signal?: AbortSignal }
 ): Promise<AIAgentResponse> {
   try {
     // 1. Submit task — returns { task_id, agent_id, user_id, session_id }
@@ -128,6 +128,20 @@ export async function callAIAgent(
     let attempt = 0
 
     while (Date.now() - startTime < POLL_TIMEOUT_MS) {
+      // Check if polling was cancelled
+      if (options?.signal?.aborted) {
+        return {
+          success: false,
+          response: {
+            status: 'error',
+            result: {},
+            message: 'Polling cancelled',
+          },
+          error: 'Polling cancelled',
+          session_id,
+        }
+      }
+
       const delay = Math.min(300 * Math.pow(1.5, attempt), 3000)
       await new Promise(r => setTimeout(r, delay))
       attempt++
