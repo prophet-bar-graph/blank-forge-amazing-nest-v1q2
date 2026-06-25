@@ -225,10 +225,16 @@ export default function Page() {
 
   // Tab switch. Going Refine → Compose means the user wants to start a new copy,
   // so it resets to a fresh chat (same as "New chat"). Other switches just navigate.
+  // When leaving Compose, clear the form state (audience, channel).
   const handleTabClick = useCallback((key: TabKey) => {
     if (key === 'compose' && activeTab === 'refine') {
       handleNewCompose()
       return
+    }
+    // Clear Compose form state when leaving Compose tab
+    if (activeTab === 'compose' && key !== 'compose') {
+      setAudience('')
+      setChannel('Email')
     }
     setActiveTab(key)
   }, [activeTab, handleNewCompose])
