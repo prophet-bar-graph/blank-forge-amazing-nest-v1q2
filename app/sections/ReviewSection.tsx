@@ -28,7 +28,7 @@ import { diffWords, diffChangeRatio, type DiffSegment } from "@/lib/diff";
 import { lensScore, overallScore, scoreColorClass } from "@/lib/brandScore";
 import { stripMarkdown, markdownToHtml } from "@/lib/markdown";
 import { copyRichText } from "@/lib/clipboard";
-import { type ChatVersion } from "@/lib/chatHistory";
+import { ChatHistory, type ChatVersion } from "@/lib/chatHistory";
 import LoadingWords from "@/components/LoadingWords";
 import { useBrandProfile } from "@/components/BrandProfileProvider";
 import { useChatHistory } from "@/components/ChatHistoryProvider";
@@ -350,6 +350,7 @@ interface ReviewSectionProps {
   onReopenConsumed?: () => void;
   onChannelChange: (channel: string) => void;
   onAudienceChange: (audience: string) => void;
+  rescoringAbortControllerRef?: React.MutableRefObject<AbortController | null>;
 }
 
 const LENGTH_OPTIONS = ["Shorter", "Same", "Longer"];
@@ -367,6 +368,7 @@ export default function ReviewSection({
   onReopenConsumed,
   onChannelChange,
   onAudienceChange,
+  rescoringAbortControllerRef,
 }: ReviewSectionProps) {
   const { profile } = useBrandProfile();
   const { saveVersion, activeChat, activeChatId, activeVersionIndex } =
@@ -412,6 +414,9 @@ export default function ReviewSection({
   } | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [noteDraft, setNoteDraft] = useState("");
+  // Track rescoring operations so we can cancel them on discard
+  const rescoringIdRef = useRef(0);
+  const rescoringSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (pendingCopy && pendingCopy.trim()) {
@@ -508,6 +513,30 @@ export default function ReviewSection({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reset state if the active chat is deleted
+  const prevActiveChatRef = useRef<ChatHistory | null>(null);
+  useEffect(() => {
+    const hadActiveChat = prevActiveChatRef.current !== null;
+    const chatWasDeleted = hadActiveChat && !activeChat;
+    if (chatWasDeleted && (result || reopenedVersion)) {
+      setPastedCopy("");
+      setResult(null);
+      setError(null);
+      setAllAccepted(false);
+      setViewMode("diff");
+      setPresetOriginalScores(null);
+      setNotes([]);
+      setNoteDraft("");
+      setCandidateCopy(null);
+      setIsEditing(false);
+      setJustSaved(false);
+      setLastNotes([]);
+      setReopenOverallNote(null);
+      setCameFromRefine(false);
+    }
+    prevActiveChatRef.current = activeChat;
+  }, [activeChat, result, pastedCopy, reopenedVersion]);
 
   // Refine the given copy. Iteration is cumulative: "Refine Again" passes the
   // latest improved copy as `baseline`, which becomes the new "original" the
@@ -641,7 +670,9 @@ export default function ReviewSection({
 
   // The saved version currently selected in the edit history (if any).
   const loadedVersion =
-    activeVersionIndex != null ? activeChat?.versions?.[activeVersionIndex] : undefined;
+    activeVersionIndex != null
+      ? activeChat?.versions?.[activeVersionIndex]
+      : undefined;
   // "Dirty" = the shown copy differs from that selected version (canonicalized
   // the same way as the displayed copy, so loading a version isn't seen as a
   // change). With no saved version yet, any non-empty copy counts as a change.
@@ -649,15 +680,29 @@ export default function ReviewSection({
     const current = currentCandidate.trim();
     if (!loadedVersion) return current.length > 0;
     return (
-      current !== stripInlineLensAnnotations(loadedVersion.copy).cleanText.trim()
+      current !==
+      stripInlineLensAnnotations(loadedVersion.copy).cleanText.trim()
     );
   }, [currentCandidate, loadedVersion]);
 
   // Discard unsaved changes: re-hydrate the currently-loaded saved version,
   // dropping the latest refine result / manual edit. Only meaningful when a
   // saved version exists to revert to.
-  const canDiscard = !!activeChat?.versions?.length && activeVersionIndex != null;
+  const canDiscard =
+    !!activeChat?.versions?.length && activeVersionIndex != null;
   const handleDiscard = () => {
+    // Cancel any pending rescoring
+    rescoringIdRef.current++;
+    rescoringAbortControllerRef?.current?.abort();
+    if (rescoringSessionRef.current) {
+      fetch("/api/maia/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: rescoringSessionRef.current }),
+      }).catch(() => {
+        // Silently fail if stop request fails
+      });
+    }
     if (!activeChat || activeVersionIndex == null) return;
     const v = activeChat.versions?.[activeVersionIndex];
     if (!v) return;
@@ -675,10 +720,16 @@ export default function ReviewSection({
   const handleRescore = async (copyToScore: string) => {
     const text = copyToScore.trim();
     if (!text || !onScore) return;
+    const rescoringId = ++rescoringIdRef.current;
     setRescoring(true);
     const prompt = `${buildBrandContextBlock(brand)}\nChannel: ${channel || "Non-Specific"}\nAudience: ${audience || "general"}\nTone Intensity: ${toneIntensity[0]}/10\nLength Preference: ${lengthPref}\n\nCopy to evaluate:\n${text}\n\nScore the copy above for brand fit AS-IS — do not rewrite it. Return JSON with mode="review" and data.scorecard = {voice, messaging, strategy}, each an object with an integer "score" (0-100) and a short "rationale". Apply the scoring rules from your instructions: full 0-100 range, 85+ is a high bar.`;
     const response = await onScore(prompt);
-    if (response) {
+    // Capture the session ID for this rescore
+    if (response?.session_id) {
+      rescoringSessionRef.current = response.session_id;
+    }
+    // Only update if this rescoring is still the latest (discard didn't happen)
+    if (response && rescoringId === rescoringIdRef.current) {
       const parsed = parseReviewResponse(response);
       const hasNumbers = (c: Scorecard | null): c is Scorecard =>
         !!c &&
@@ -782,6 +833,10 @@ export default function ReviewSection({
       // Saving commits the candidate — also lock the view to the accepted
       // (refined) copy. "Refine Again" resets allAccepted to reopen iteration.
       setAllAccepted(true);
+      // Update the baseline to the newly saved version so future comparisons
+      // are against this saved version, not the original pasted copy
+      setPastedCopy(currentCandidate.trim());
+      setCandidateCopy(null);
     } else {
       setError("Failed to save to history. Please try again.");
     }
@@ -822,7 +877,11 @@ export default function ReviewSection({
     } | null,
   ): Flat | null =>
     s
-      ? { voice: s.voice.score, messaging: s.messaging.score, strategy: s.strategy.score }
+      ? {
+          voice: s.voice.score,
+          messaging: s.messaging.score,
+          strategy: s.strategy.score,
+        }
       : null;
   const overallFromFlat = (s: Flat | null): number | undefined =>
     s
@@ -849,7 +908,9 @@ export default function ReviewSection({
 
   const currentOverall = improvedOverall?.score ?? originalOverall?.score;
   const previousOverall = isDirty
-    ? (loadedVersionScores ? overallFromFlat(loadedVersionScores) : originalOverall?.score)
+    ? loadedVersionScores
+      ? overallFromFlat(loadedVersionScores)
+      : originalOverall?.score
     : overallFromFlat(priorVersionScores);
 
   // Group the agent's per-change rationales by lens, so the new right-margin
@@ -1051,20 +1112,222 @@ export default function ReviewSection({
   const ratio = diffChangeRatio(segments);
   const useBlockDiff = ratio > 0.6;
 
+  // Check if refined copy differs from original and if user has made actual edits
+  const refinedIsDifferent = cleanedImproved.trim() !== pastedCopy.trim();
+  const userHasActuallyEdited =
+    candidateCopy !== null && candidateCopy.trim() !== cleanedImproved.trim();
+  const shouldDisableRefinedButtons =
+    !refinedIsDifferent && !userHasActuallyEdited;
+
   // Effective view mode (used by both the top tab row and the document column)
-  const effectiveMode: "diff" | "refined" | "original" = allAccepted
-    ? "refined"
-    : viewMode;
+  const effectiveMode: "diff" | "refined" | "original" = isEditing
+    ? viewMode // Allow user to edit regardless of button disabled state
+    : shouldDisableRefinedButtons
+      ? "original"
+      : allAccepted
+        ? "refined"
+        : viewMode;
 
   return (
-    <div className="space-y-4">
-      {/* Body — scores rail (left, narrow) + document column (right, wide).
-          Same 1fr/2fr ratio as the empty-state input layout above. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6 lg:gap-8">
+      {/* ---- LEFT COLUMN: Brief + Scores + Notes + Refine (always visible) ---- */}
+      <div className="flex flex-col space-y-5">
+        <div>
+          <StepEyebrow step={1} label="Build the Brief" />
+          <section className="rounded-2xl border border-black/75 p-4 lg:p-5 flex flex-col">
+            <div className="space-y-3">
+              {/* Channel */}
+              <div>
+                <h4 className="font-bold text-sm text-studio-ink mb-2">
+                  Select a channel:
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {CHANNELS.map((ch) => (
+                    <button
+                      key={ch}
+                      type="button"
+                      onClick={() => onChannelChange(ch)}
+                      className={`px-3 py-1 rounded-full text-xs transition ${
+                        channel === ch
+                          ? "bg-studio-ink text-studio-page"
+                          : "bg-studio-page border border-studio-border text-studio-muted hover:text-studio-ink"
+                      }`}
+                    >
+                      {ch.toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Audience */}
+              <div>
+                <h4 className="font-bold text-sm text-studio-ink">
+                  Define the audience:
+                </h4>
+                <p className="text-xs italic text-studio-mutedSoft mb-1">
+                  Who do you want to talk to?
+                </p>
+                <Input
+                  value={audience}
+                  onChange={(e) => onAudienceChange(e.target.value)}
+                  placeholder="Internal leaders"
+                  className="bg-studio-page border-studio-border text-sm text-studio-ink placeholder:text-studio-mutedSoft"
+                />
+              </div>
+
+              {/* Length */}
+              <div>
+                <h4 className="font-bold text-sm text-studio-ink mb-2">
+                  Select length:
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {LENGTH_OPTIONS.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setLengthPref(opt)}
+                      className={`px-3 py-1 rounded-full text-xs transition ${
+                        lengthPref === opt
+                          ? "bg-studio-ink text-studio-page"
+                          : "bg-studio-page border border-studio-border text-studio-muted hover:text-studio-ink"
+                      }`}
+                    >
+                      {opt.toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tone */}
+              <div>
+                <h4 className="font-bold text-sm text-studio-ink">Tone:</h4>
+                <p className="text-xs italic text-studio-mutedSoft mb-1">
+                  How do we want to sound?
+                </p>
+                <Slider
+                  value={toneIntensity}
+                  onValueChange={setToneIntensity}
+                  min={1}
+                  max={10}
+                  step={1}
+                />
+                <div className="flex justify-between text-xs text-studio-mutedSoft mt-1">
+                  <span>subtle</span>
+                  <span>bold</span>
+                </div>
+                <p className="text-sm font-bold text-studio-ink mt-1">
+                  {toneIntensity[0]}/10
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* Scores — shown when result exists */}
+        {result && (
+          <>
+            <LensCard
+              label="Overall Brand Fit"
+              current={currentOverall}
+              previous={previousOverall}
+              loading={rescoring}
+              body={overallBody}
+            />
+            <LensCard
+              label="Voice"
+              current={currentScores?.voice}
+              previous={previousScores?.voice}
+              loading={rescoring}
+              body={
+                changesByLens.voice.length
+                  ? joinChanges(changesByLens.voice)
+                  : null
+              }
+            />
+            <LensCard
+              label="Messaging"
+              current={currentScores?.messaging}
+              previous={previousScores?.messaging}
+              loading={rescoring}
+              body={
+                changesByLens.messaging.length
+                  ? joinChanges(changesByLens.messaging)
+                  : null
+              }
+            />
+            <LensCard
+              label="Strategy"
+              current={currentScores?.strategy}
+              previous={previousScores?.strategy}
+              loading={rescoring}
+              body={
+                changesByLens.strategy.length
+                  ? joinChanges(changesByLens.strategy)
+                  : null
+              }
+            />
+          </>
+        )}
+
+        {/* Notes + Refine Again — shown when result exists */}
+        {result && (
+          <div className="pt-2">
+            <p className="font-bold text-sm text-studio-ink mb-2">
+              Any notes for the next pass?
+            </p>
+            <Textarea
+              placeholder="Notes (optional)"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              rows={3}
+              className="bg-white border-studio-muted/30 text-studio-ink placeholder:text-studio-muted/65 text-sm rounded-md resize-none mb-3"
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  const trimmed = noteDraft.trim();
+                  // Cumulative: refine the current candidate (incl. manual edits), not the original.
+                  handleRefine({
+                    baseline: currentCandidate,
+                    notesOverride: trimmed ? [trimmed] : [],
+                  });
+                }}
+                disabled={loading}
+                className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Refining…</span>
+                  </span>
+                ) : (
+                  <>
+                    <span>Refine Copy</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ---- RIGHT COLUMN: Copy Input or Document ---- */}
+      <div className="flex flex-col">
+        {/* Step 2 label and document — both sticky when refining */}
+        {result && (
+          <div className="sticky top-0 z-10 bg-studio-page">
+            <StepEyebrow step={2} label="Refine Copy" />
+          </div>
+        )}
+
         {/* Document column wrapper — flex-col so the bordered document
             stretches and Accept All sits at the bottom (top-aligning with the
             Refine Again button at the bottom of the scores rail). */}
-        <div className="lg:order-2 flex flex-col">
+        <div
+          className={`${result && "sticky top-[36px] z-10"} lg:order-2 flex flex-col`}
+        >
           <div className="min-h-[400px] flex-1 flex flex-col rounded-2xl border border-studio-border p-6 lg:p-8">
             {/* Right column header — "Refine Copy:" label + tabs (Annotated /
               Refined / Original). Accept All moved out, below the box. */}
@@ -1082,7 +1345,11 @@ export default function ReviewSection({
                           ? "Refined"
                           : "Original";
                     const isActive = effectiveMode === mode;
-                    const disabled = allAccepted && mode !== "refined";
+                    // Enable all buttons while editing so user can navigate between tabs
+                    const disabled = isEditing
+                      ? false
+                      : (shouldDisableRefinedButtons && mode !== "original") ||
+                        (allAccepted && mode !== "refined");
                     return (
                       <button
                         key={mode}
@@ -1120,10 +1387,31 @@ export default function ReviewSection({
                     onClick={() => {
                       if (isEditing) {
                         setIsEditing(false);
-                        // Finished editing — re-score the edited copy so the
-                        // lens scores reflect the manual changes.
-                        if (isDirty) void handleRescore(currentCandidate);
+                        const hasRealChanges =
+                          currentCandidate.trim() !== cleanedImproved.trim();
+                        if (hasRealChanges) {
+                          // Rescore the edited copy
+                          void handleRescore(currentCandidate);
+                        } else {
+                          // Copy is back to original — cancel pending rescore and hide spinner immediately
+                          rescoringIdRef.current++;
+                          rescoringAbortControllerRef?.current?.abort();
+                          if (rescoringSessionRef.current) {
+                            fetch("/api/maia/stop", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                session_id: rescoringSessionRef.current,
+                              }),
+                            }).catch(() => {
+                              // Silently fail if stop request fails
+                            });
+                          }
+                          setRescoring(false);
+                        }
                       } else {
+                        // Cancel any pending rescores from the previous edit
+                        rescoringIdRef.current++;
                         // Edit works even after a save/accept: editing the
                         // already-accepted copy starts a fresh override candidate
                         // the user can save as a new version.
@@ -1204,19 +1492,19 @@ export default function ReviewSection({
                               setJustSaved(false);
                             }}
                             rows={12}
-                            className="bg-studio-page border-studio-border text-studio-ink text-xl md:text-xl leading-relaxed resize-none rounded-md w-full flex-1 min-h-0"
+                            className="bg-studio-page border-studio-border text-studio-ink text-base md:text-base leading-relaxed resize-none rounded-md w-full flex-1 min-h-0"
                           />
                         ) : (
                           <MarkdownText
                             text={currentCandidate || pastedCopy}
-                            className="text-studio-ink text-xl leading-relaxed"
+                            className="text-studio-ink text-base leading-relaxed"
                           />
                         ))}
 
                       {effectiveMode === "original" && (
                         <MarkdownText
                           text={pastedCopy}
-                          className="text-studio-ink text-xl leading-relaxed"
+                          className="text-studio-ink text-base leading-relaxed"
                         />
                       )}
 
@@ -1242,7 +1530,7 @@ export default function ReviewSection({
                               </div>
                             </div>
                           ) : (
-                            <p className="text-studio-ink text-xl leading-relaxed whitespace-pre-wrap">
+                            <p className="text-studio-ink text-base leading-relaxed whitespace-pre-wrap">
                               {segments.map((seg, i) => {
                                 if (seg.type === "unchanged")
                                   return <span key={i}>{seg.text}</span>;
@@ -1270,7 +1558,7 @@ export default function ReviewSection({
                           // 0 changes: show the copy plainly under the celebration banner above
                           <MarkdownText
                             text={currentCandidate || pastedCopy}
-                            className="text-studio-ink text-xl leading-relaxed"
+                            className="text-studio-ink text-base leading-relaxed"
                           />
                         ))}
 
@@ -1311,7 +1599,9 @@ export default function ReviewSection({
             )}
             <Button
               onClick={handleSaveClick}
-              disabled={saving || justSaved || !currentCandidate.trim() || !isDirty}
+              disabled={
+                saving || justSaved || !currentCandidate.trim() || !isDirty
+              }
               className="bg-studio-ink hover:bg-studio-muted text-studio-page rounded-md h-10 px-5 text-sm font-medium"
             >
               {justSaved ? (
@@ -1333,93 +1623,6 @@ export default function ReviewSection({
             </Button>
           </div>
         </div>
-
-        {/* Scores rail — 4 lens cards (Overall + Voice/Messaging/Strategy)
-            then a single notes textarea + Refine Again. Visually on the LEFT
-            (matching the input layout) via lg:order-1. */}
-        <aside className="space-y-5 lg:order-1">
-          <LensCard
-            label="Overall Brand Fit"
-            current={currentOverall}
-            previous={previousOverall}
-            loading={rescoring}
-            body={overallBody}
-          />
-          <LensCard
-            label="Voice"
-            current={currentScores?.voice}
-            previous={previousScores?.voice}
-            loading={rescoring}
-            body={
-              changesByLens.voice.length
-                ? joinChanges(changesByLens.voice)
-                : null
-            }
-          />
-          <LensCard
-            label="Messaging"
-            current={currentScores?.messaging}
-            previous={previousScores?.messaging}
-            loading={rescoring}
-            body={
-              changesByLens.messaging.length
-                ? joinChanges(changesByLens.messaging)
-                : null
-            }
-          />
-          <LensCard
-            label="Strategy"
-            current={currentScores?.strategy}
-            previous={previousScores?.strategy}
-            loading={rescoring}
-            body={
-              changesByLens.strategy.length
-                ? joinChanges(changesByLens.strategy)
-                : null
-            }
-          />
-
-          {/* Any notes for the next pass? — single textarea + Refine Again */}
-          <div className="pt-2">
-            <p className="font-bold text-sm text-studio-ink mb-2">
-              Any notes for the next pass?
-            </p>
-            <Textarea
-              placeholder="Notes (optional)"
-              value={noteDraft}
-              onChange={(e) => setNoteDraft(e.target.value)}
-              rows={3}
-              className="bg-white border-studio-muted/30 text-studio-ink placeholder:text-studio-muted/65 text-sm rounded-md resize-none mb-3"
-            />
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  const trimmed = noteDraft.trim();
-                  // Cumulative: refine the current candidate (incl. manual edits), not the original.
-                  handleRefine({
-                    baseline: currentCandidate,
-                    notesOverride: trimmed ? [trimmed] : [],
-                  });
-                }}
-                disabled={loading}
-                className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span>Refining…</span>
-                  </span>
-                ) : (
-                  <>
-                    <span>Refine Again</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </aside>
       </div>
 
       {/* Warn before saving from an earlier version — it discards newer ones. */}
