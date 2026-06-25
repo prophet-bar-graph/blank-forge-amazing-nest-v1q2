@@ -92,6 +92,8 @@ export default function Page() {
   const [composeNonce, setComposeNonce] = useState(0)
   const [refineNonce, setRefineNonce] = useState(0)
   const sessionIdRef = useRef('')
+  const composeAbortControllerRef = useRef<AbortController | null>(null)
+  const rescoringAbortControllerRef = useRef<AbortController | null>(null)
   const { profile: brandProfile, loading: brandLoading } = useBrandProfile()
   const { loadChat, loadVersion, deleteVersion, startNewChat } = useChatHistory()
   const { email, isAdmin, givenName, familyName } = useSSO()
@@ -251,10 +253,10 @@ export default function Page() {
 
   // `quiet` skips the global loading toggle — used for background re-scoring so
   // the document view isn't replaced by the loading skeleton.
-  const handleCallAgent = useCallback(async (prompt: string, agentId: string, quiet = false): Promise<any> => {
+  const handleCallAgent = useCallback(async (prompt: string, agentId: string, quiet = false, signal?: AbortSignal): Promise<any> => {
     if (!quiet) setLoading(true)
     try {
-      const result = await callAIAgent(prompt, agentId, { session_id: sessionIdRef.current })
+      const result = await callAIAgent(prompt, agentId, { session_id: sessionIdRef.current, signal })
       if (result.success) {
         const agentResult = result.response?.result
         if (agentResult && typeof agentResult === 'object') return agentResult
@@ -269,12 +271,20 @@ export default function Page() {
     }
   }, [])
 
-  const onCompose = useCallback((prompt: string) => handleCallAgent(prompt, COMPOSE_AGENT_ID), [handleCallAgent])
+  const onCompose = useCallback((prompt: string) => {
+    const controller = new AbortController()
+    composeAbortControllerRef.current = controller
+    return handleCallAgent(prompt, COMPOSE_AGENT_ID, false, controller.signal)
+  }, [handleCallAgent])
   const onRefine  = useCallback((prompt: string) => handleCallAgent(prompt, REFINE_AGENT_ID),  [handleCallAgent])
   const onChat    = useCallback((prompt: string) => handleCallAgent(prompt, CHAT_AGENT_ID),    [handleCallAgent])
   // Quiet refine-agent call for re-scoring an edited copy (reads the returned
   // `scorecard`, i.e. the score of the supplied copy, without a visible reload).
-  const onScore   = useCallback((prompt: string) => handleCallAgent(prompt, REFINE_AGENT_ID, true), [handleCallAgent])
+  const onScore   = useCallback((prompt: string) => {
+    const controller = new AbortController()
+    rescoringAbortControllerRef.current = controller
+    return handleCallAgent(prompt, REFINE_AGENT_ID, true, controller.signal)
+  }, [handleCallAgent])
 
   const companyName = brandProfile?.companyName || '[Brand]'
 
@@ -381,10 +391,10 @@ export default function Page() {
         {/* Main content */}
         <main className="max-w-[1400px] mx-auto px-2 py-4">
           {activeTab === 'compose' && (
-            <WriteSection key={`compose-${composeNonce}`} channel={channel} audience={audience} onCallAgent={onCompose} loading={loading} onSendToRefine={sendToRefine} onChannelChange={setChannel} onAudienceChange={setAudience} />
+            <WriteSection key={`compose-${composeNonce}`} channel={channel} audience={audience} onCallAgent={onCompose} loading={loading} onSendToRefine={sendToRefine} onChannelChange={setChannel} onAudienceChange={setAudience} composeAbortControllerRef={composeAbortControllerRef} />
           )}
           {activeTab === 'refine' && (
-            <ReviewSection key={`refine-${refineNonce}`} channel={channel} audience={audience} onCallAgent={onRefine} onScore={onScore} loading={loading} pendingCopy={pendingRefineCopy} pendingScores={pendingRefineScores} onPendingConsumed={consumePending} reopenedVersion={pendingReopen} onReopenConsumed={consumeReopen} onChannelChange={setChannel} onAudienceChange={setAudience} />
+            <ReviewSection key={`refine-${refineNonce}`} channel={channel} audience={audience} onCallAgent={onRefine} onScore={onScore} loading={loading} pendingCopy={pendingRefineCopy} pendingScores={pendingRefineScores} onPendingConsumed={consumePending} reopenedVersion={pendingReopen} onReopenConsumed={consumeReopen} onChannelChange={setChannel} onAudienceChange={setAudience} rescoringAbortControllerRef={rescoringAbortControllerRef} />
           )}
           {activeTab === 'learn' && (
             <ExplainSection
