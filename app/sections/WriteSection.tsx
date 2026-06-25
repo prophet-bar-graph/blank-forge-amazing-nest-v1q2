@@ -21,6 +21,8 @@ import { emptyBrandProfile } from "@/lib/brandProfile";
 import { buildBrandContextBlock } from "@/lib/brandContextPrompt";
 import { scoreColorClass } from "@/lib/brandScore";
 import { stripMarkdown } from "@/lib/markdown";
+import { MarkdownText } from "@/components/MarkdownText";
+import { overallScore } from "@/lib/brandScore";
 import { CHANNELS } from "@/lib/channels";
 import { StepEyebrow } from "@/components/StepEyebrow";
 
@@ -39,12 +41,19 @@ const COMPOSE_LOADING_WORDS = [
 // ---- Types ----
 
 type LensScores = { voice: number; messaging: number; strategy: number };
+type LensEntry = { score?: number; rationale: string };
+type Scorecard = {
+  voice: LensEntry;
+  messaging: LensEntry;
+  strategy: LensEntry;
+};
 type Variation = {
   label: string;
   differentiator: string;
   copy: string;
   scores?: LensScores;
   word_count?: number;
+  scorecard?: Scorecard;
 };
 type WriteResult = {
   variations: Variation[];
@@ -59,6 +68,7 @@ interface WriteSectionProps {
   onSendToRefine: (copy: string, scores?: LensScores) => void;
   onChannelChange: (channel: string) => void;
   onAudienceChange: (audience: string) => void;
+  composeAbortControllerRef?: React.MutableRefObject<AbortController | null>;
 }
 
 // ---- Parsing: prefer structured data, fall back to markdown extraction ----
@@ -94,12 +104,29 @@ function parseStructured(response: any): Variation[] {
               strategy: Number(v.strategy_score || 0),
             }
           : undefined;
+
+    const scorecard = v?.scorecard ? {
+      voice: {
+        score: Number(v.scorecard.voice?.score ?? v.scorecard.voice?.voice_score ?? 0),
+        rationale: v.scorecard.voice?.rationale ?? "",
+      },
+      messaging: {
+        score: Number(v.scorecard.messaging?.score ?? v.scorecard.messaging?.messaging_score ?? 0),
+        rationale: v.scorecard.messaging?.rationale ?? "",
+      },
+      strategy: {
+        score: Number(v.scorecard.strategy?.score ?? v.scorecard.strategy?.strategy_score ?? 0),
+        rationale: v.scorecard.strategy?.rationale ?? "",
+      },
+    } : undefined;
+
     return {
       label: v?.label || `Option ${i + 1}`,
       differentiator: v?.differentiator || v?.style || "",
       copy: v?.copy || v?.text || "",
       scores: parsedScores,
       word_count: typeof v?.word_count === "number" ? v.word_count : undefined,
+      scorecard,
     };
   });
 }
@@ -223,17 +250,17 @@ function heuristicScores(
 
 // Detect email format and split into subject + body. Handles multiple shapes the agent emits:
 //   **Subject:** Hello\n\n**Body:**\n\nContent...
-//   **Subject:** Hello\n**Body:** Content...
+//   **Subject: Hello**\n\nContent...
 //   Subject: Hello\n\nContent...
 // Returns subject=null if no Subject: line is found near the top.
 function parseEmailFormat(copy: string): {
   subject: string | null;
   body: string;
 } {
-  const subjectRe = /^\s*\*{0,2}\s*Subject\s*\*{0,2}\s*:\s*(.+?)(?:\n|$)/i;
+  const subjectRe = /^\s*\*{0,2}\s*Subject\s*\*{0,2}\s*:\s*(.+?)(?:\*{0,2})?\s*(?:\n|$)/i;
   const m = copy.match(subjectRe);
   if (!m) return { subject: null, body: copy };
-  const subject = m[1].trim();
+  let subject = m[1].trim().replace(/\*+$/, ""); // Remove trailing asterisks
   // Strip the matched Subject line, then optionally a Body: label (with or without content on same line)
   let body = copy
     .slice(m[0].length)
@@ -285,6 +312,7 @@ export default function WriteSection({
   onSendToRefine,
   onChannelChange,
   onAudienceChange,
+  composeAbortControllerRef,
 }: WriteSectionProps) {
   const { profile } = useBrandProfile();
   const { createChat, saveVersion } = useChatHistory();
@@ -328,29 +356,23 @@ export default function WriteSection({
         ? `Mandatory phrases (must appear verbatim, at least once across the variations): ${mandatories.join(" | ")}`
         : "",
       "",
-      'Generate three on-brand copy variations per the Brand Voice & Messaging instructions. Return JSON with mode="write" and data.variations[] containing label, differentiator (Hook-led / Solution-led / Story-led), copy, scores ({voice, messaging, strategy} each 0-100 integer), and word_count.',
+      'Generate three on-brand copy variations per the Brand Voice & Messaging instructions. Return JSON with mode="write" and data.variations[] containing label, differentiator (Hook-led / Solution-led / Story-led), copy, scores ({voice, messaging, strategy} each an object with integer score 0-100 and rationale string), and word_count.',
     ]
       .filter(Boolean)
       .join("\n");
     const response = await onCallAgent(prompt);
     if (response) {
+      // Check if the response indicates cancellation
+      if (response.error === 'Polling cancelled') {
+        setError(null); // Don't show an error for cancellation
+        return;
+      }
       const parsed = parseWriteResponse(response);
       setResult(parsed);
       setCarouselIndex(0);
-      // Every "Generate my copy" starts a new chat. Persist the brief + the
-      // generated variations; this becomes the active chat that Refine saves into.
-      void createChat(
-        {
-          contentObjective,
-          supportingMessages,
-          callToAction,
-          mandatories,
-          tone,
-        },
-        channel,
-        audience,
-        parsed.variations,
-      );
+      // Variations are kept in state during composition. A chat is only created
+      // when the user explicitly sends a variant to Refine, which keeps the
+      // sidebar clean and only shows work that's been actively refined.
     } else {
       setError("Failed to generate variants. Please try again.");
     }
@@ -581,30 +603,26 @@ export default function WriteSection({
             </div>
           </div>
 
-          {/* Generate Copy — primary action, right-aligned at the bottom of the brief. */}
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={
-              loading || !contentObjective.trim() || !supportingMessages.trim()
-            }
-            className="h-10 px-5 mt-3 self-end inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? (
-              <span className="inline-flex items-center gap-3">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <LoadingWords
-                  words={COMPOSE_LOADING_WORDS}
-                  className="italic"
-                />
-              </span>
-            ) : (
-              <>
-                <span>Generate my copy</span>
-                <ArrowRight className="h-4 w-4" />
-              </>
-            )}
-          </button>
+          {/* Generate Copy button — becomes Cancel when loading */}
+          {loading ? (
+            <button
+              type="button"
+              onClick={() => composeAbortControllerRef?.current?.abort()}
+              className="h-10 px-5 mt-3 self-end inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-card border border-studio-border text-studio-ink hover:bg-studio-border transition-colors"
+            >
+              <span>Cancel</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={!contentObjective.trim() || !supportingMessages.trim()}
+              className="h-10 px-5 mt-3 self-end inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span>Generate my copy</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
           {error && (
             <div className="flex items-center gap-2 p-2.5 rounded-md bg-studio-page border border-studio-border text-xs mt-3">
               <AlertCircle className="h-3.5 w-3.5 text-studio-scoreRed flex-shrink-0" />
@@ -677,8 +695,8 @@ export default function WriteSection({
                   variation={activeVariant}
                   mandatories={mandatories}
                   onSendToRefine={() => {
-                    // Seed the active chat's version 0 with the selected
-                    // variation so reopening lands on this baseline copy.
+                    // Save the selected variant as V1 when sending to Refine.
+                    // This creates a new chat if one doesn't exist yet.
                     void saveVersion({
                       copy: activeVariant.copy,
                       scores: activeVariant.scores ?? null,
@@ -798,32 +816,58 @@ function VariantCard({
       </header>
 
       {/* Lens scores row */}
-      <div className="grid grid-cols-3 gap-2 pb-3 border-b border-studio-border mb-4">
-        {(["voice", "messaging", "strategy"] as const).map((lens) => {
-          const score = variation.scores[lens];
-          return (
-            <div key={lens} className="flex flex-col">
-              <span className="text-xs font-bold text-studio-ink capitalize">
-                {lens}
-              </span>
-              <span className={`text-2xl font-bold ${scoreColorClass(score)}`}>
-                {score}
-              </span>
-            </div>
-          );
-        })}
+      <div className="pb-3 border-b border-studio-border mb-4">
+        <div className="grid grid-cols-4 gap-3">
+          {(["voice", "messaging", "strategy"] as const).map((lens) => {
+            const score = variation.scores[lens];
+            const rationale = variation.scorecard?.[lens]?.rationale;
+            return (
+              <div key={lens} className="flex flex-col">
+                <span className="text-xs font-bold text-studio-ink capitalize">
+                  {lens}
+                </span>
+                <span className={`text-2xl font-bold ${scoreColorClass(score)}`}>
+                  {score}
+                </span>
+                {rationale && (
+                  <span className="text-xs text-studio-muted mt-1 leading-tight">
+                    {rationale}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          <div className="flex flex-col">
+            <span className="text-xs font-bold text-studio-ink">Overall</span>
+            <span className={`text-2xl font-bold ${scoreColorClass(overallScore({
+              voice: { score: variation.scores.voice },
+              messaging: { score: variation.scores.messaging },
+              strategy: { score: variation.scores.strategy },
+            }).score)}`}>
+              {overallScore({
+                voice: { score: variation.scores.voice },
+                messaging: { score: variation.scores.messaging },
+                strategy: { score: variation.scores.strategy },
+              }).score}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 mb-4 space-y-2 text-studio-ink overflow-y-auto min-h-0">
+      <div className="flex-1 mb-4 overflow-y-auto min-h-0">
         {headline && (
-          <p className="font-bold text-base leading-snug">
-            <HighlightedCopy copy={headline} mandatories={mandatories} />
-          </p>
+          <div className="mb-3">
+            <MarkdownText
+              text={headline}
+              className="font-bold text-base leading-snug space-y-0"
+            />
+          </div>
         )}
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-          <HighlightedCopy copy={body} mandatories={mandatories} />
-        </p>
+        <MarkdownText
+          text={body}
+          className="text-sm leading-relaxed space-y-2 text-studio-ink"
+        />
       </div>
 
       {/* Footer actions */}
