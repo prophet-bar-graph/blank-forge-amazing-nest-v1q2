@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Loader2, Send, Sparkles } from 'lucide-react'
 import { useBrandProfile } from '@/components/BrandProfileProvider'
 import { emptyBrandProfile } from '@/lib/brandProfile'
@@ -91,6 +91,7 @@ export default function CommandPalette({ open, onOpenChange, onCallAgent, loadin
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-studio-page border-studio-border/80 max-w-2xl p-0 gap-0 overflow-hidden rounded-xl">
         <DialogTitle className="sr-only">Ask the brand assistant</DialogTitle>
+        <DialogDescription className="sr-only">Chat with the brand assistant to ask questions about your brand</DialogDescription>
         <div className="flex items-center gap-3 px-5 py-4 pr-12 border-b border-studio-muted/30">
           <Sparkles className="h-4 w-4 text-studio-ink" />
           <p className="text-[11px] uppercase tracking-[0.2em] text-studio-muted/80">Ask the brand assistant</p>

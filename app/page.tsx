@@ -228,6 +228,11 @@ export default function Page() {
       handleNewCompose()
       return
     }
+    // Clear Compose form state (audience & channel) when leaving Compose tab
+    if (activeTab === 'compose' && key !== 'compose') {
+      setAudience('')
+      setChannel('Email')
+    }
     setActiveTab(key)
   }, [activeTab, handleNewCompose])
 
