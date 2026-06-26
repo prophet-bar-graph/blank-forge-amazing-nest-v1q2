@@ -17,6 +17,7 @@ import {
   ArrowRight,
   AlertCircle,
   Check,
+  ChevronDown,
   Lightbulb,
   BadgeCheck,
   Pencil,
@@ -383,6 +384,11 @@ export default function ReviewSection({
   const [viewMode, setViewMode] = useState<"diff" | "refined" | "original">(
     "diff",
   );
+  // Which lens score card is expanded into the shared rationale panel below the
+  // row. null = collapsed. Clicking the active card again collapses it.
+  const [openLens, setOpenLens] = useState<
+    "overall" | "voice" | "messaging" | "strategy" | null
+  >(null);
   // Candidate/override state. After a refine pass, `result` is the candidate.
   // A manual edit diverges `candidateCopy` from the agent's text (an "override").
   // Nothing is persisted until the user clicks "Save to history".
@@ -1223,52 +1229,6 @@ export default function ReviewSection({
           </section>
         </div>
 
-        {/* Scores — shown when result exists */}
-        {result && (
-          <>
-            <LensCard
-              label="Overall Brand Fit"
-              current={currentOverall}
-              previous={previousOverall}
-              loading={rescoring}
-              body={overallBody}
-            />
-            <LensCard
-              label="Voice"
-              current={currentScores?.voice}
-              previous={previousScores?.voice}
-              loading={rescoring}
-              body={
-                changesByLens.voice.length
-                  ? joinChanges(changesByLens.voice)
-                  : null
-              }
-            />
-            <LensCard
-              label="Messaging"
-              current={currentScores?.messaging}
-              previous={previousScores?.messaging}
-              loading={rescoring}
-              body={
-                changesByLens.messaging.length
-                  ? joinChanges(changesByLens.messaging)
-                  : null
-              }
-            />
-            <LensCard
-              label="Strategy"
-              current={currentScores?.strategy}
-              previous={previousScores?.strategy}
-              loading={rescoring}
-              body={
-                changesByLens.strategy.length
-                  ? joinChanges(changesByLens.strategy)
-                  : null
-              }
-            />
-          </>
-        )}
-
         {/* Notes + Refine Again — shown when result exists */}
         {result && (
           <div className="pt-2">
@@ -1315,20 +1275,91 @@ export default function ReviewSection({
 
       {/* ---- RIGHT COLUMN: Copy Input or Document ---- */}
       <div className="flex flex-col">
-        {/* Step 2 label and document — both sticky when refining */}
-        {result && (
-          <div className="sticky top-0 z-10 bg-studio-page">
-            <StepEyebrow step={2} label="Refine Copy" />
-          </div>
-        )}
+        {/* Step 2 label */}
+        {result && <StepEyebrow step={2} label="Refine Copy" />}
 
         {/* Document column wrapper — flex-col so the bordered document
             stretches and Accept All sits at the bottom (top-aligning with the
             Refine Again button at the bottom of the scores rail). */}
-        <div
-          className={`${result && "sticky top-[36px] z-10"} lg:order-2 flex flex-col`}
-        >
+        <div className="lg:order-2 flex flex-col">
           <div className="min-h-[400px] flex-1 flex flex-col rounded-2xl border border-studio-border p-6 lg:p-8">
+            {/* Scores — above the Refine Copy tabs. Each card is a button that
+                expands its rationale into the shared panel below the row. */}
+            {result &&
+              (() => {
+                const lensCards = [
+                  {
+                    key: "overall" as const,
+                    label: "Overall Brand Fit",
+                    current: currentOverall,
+                    previous: previousOverall,
+                    body: overallBody,
+                  },
+                  {
+                    key: "voice" as const,
+                    label: "Voice",
+                    current: currentScores?.voice,
+                    previous: previousScores?.voice,
+                    body: changesByLens.voice.length
+                      ? joinChanges(changesByLens.voice)
+                      : null,
+                  },
+                  {
+                    key: "messaging" as const,
+                    label: "Messaging",
+                    current: currentScores?.messaging,
+                    previous: previousScores?.messaging,
+                    body: changesByLens.messaging.length
+                      ? joinChanges(changesByLens.messaging)
+                      : null,
+                  },
+                  {
+                    key: "strategy" as const,
+                    label: "Strategy",
+                    current: currentScores?.strategy,
+                    previous: previousScores?.strategy,
+                    body: changesByLens.strategy.length
+                      ? joinChanges(changesByLens.strategy)
+                      : null,
+                  },
+                ];
+                const open = lensCards.find((l) => l.key === openLens);
+                return (
+                  <div className="pb-4 mb-4 border-b border-studio-border">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      {lensCards.map((lens) => (
+                        <LensCard
+                          key={lens.key}
+                          label={lens.label}
+                          current={lens.current}
+                          previous={lens.previous}
+                          loading={rescoring}
+                          hasRationale={!!lens.body}
+                          active={openLens === lens.key}
+                          onClick={
+                            lens.body
+                              ? () =>
+                                  setOpenLens((prev) =>
+                                    prev === lens.key ? null : lens.key,
+                                  )
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </div>
+                    {open?.body && (
+                      <div className="mt-3 rounded-lg bg-studio-cardSubtle p-3">
+                        <p className="font-bold text-xs text-studio-ink mb-1">
+                          {open.label}
+                        </p>
+                        <p className="text-sm text-studio-ink/85 leading-relaxed">
+                          {open.body}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             {/* Right column header — "Refine Copy:" label + tabs (Annotated /
               Refined / Original). Accept All moved out, below the box. */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -1666,21 +1697,42 @@ function LensCard({
   label,
   current,
   previous,
-  body,
   loading,
+  active,
+  hasRationale,
+  onClick,
 }: {
   label: string;
   current?: number;
   previous?: number;
-  body?: string | null;
   loading?: boolean;
+  active?: boolean;
+  hasRationale?: boolean;
+  onClick?: () => void;
 }) {
   // While (re)scoring, show a spinner in place of the score number, keeping the
   // "/100" and the "from xx/100" baseline so the delta context stays visible.
   const showPrevious = previous != null && (loading || previous !== current);
   return (
-    <div className="space-y-1.5">
-      <h4 className="font-bold text-sm text-studio-ink">{label}</h4>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      aria-expanded={hasRationale ? !!active : undefined}
+      className={`text-left space-y-1.5 rounded-lg border p-3 transition-colors ${
+        active
+          ? "border-studio-ink bg-studio-cardSubtle"
+          : "border-studio-border"
+      } ${onClick ? "hover:bg-studio-cardSubtle cursor-pointer" : "cursor-default"}`}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <h4 className="font-bold text-sm text-studio-ink">{label}</h4>
+        {hasRationale && (
+          <ChevronDown
+            className={`h-4 w-4 text-studio-mutedSoft flex-shrink-0 transition-transform ${active ? "rotate-180" : ""}`}
+          />
+        )}
+      </div>
       {loading ? (
         <p className="text-2xl font-bold leading-none flex items-center gap-1 text-studio-mutedSoft">
           <Loader2 className="h-6 w-6 animate-spin" />
@@ -1698,12 +1750,7 @@ function LensCard({
           from {previous}/100
         </p>
       )}
-      {body && (
-        <p className="text-sm text-studio-ink/85 leading-relaxed pt-1">
-          {body}
-        </p>
-      )}
-    </div>
+    </button>
   );
 }
 
