@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -105,20 +105,32 @@ function parseStructured(response: any): Variation[] {
             }
           : undefined;
 
-    const scorecard = v?.scorecard ? {
-      voice: {
-        score: Number(v.scorecard.voice?.score ?? v.scorecard.voice?.voice_score ?? 0),
-        rationale: v.scorecard.voice?.rationale ?? "",
-      },
-      messaging: {
-        score: Number(v.scorecard.messaging?.score ?? v.scorecard.messaging?.messaging_score ?? 0),
-        rationale: v.scorecard.messaging?.rationale ?? "",
-      },
-      strategy: {
-        score: Number(v.scorecard.strategy?.score ?? v.scorecard.strategy?.strategy_score ?? 0),
-        rationale: v.scorecard.strategy?.rationale ?? "",
-      },
-    } : undefined;
+    const scorecard = v?.scorecard
+      ? {
+          voice: {
+            score: Number(
+              v.scorecard.voice?.score ?? v.scorecard.voice?.voice_score ?? 0,
+            ),
+            rationale: v.scorecard.voice?.rationale ?? "",
+          },
+          messaging: {
+            score: Number(
+              v.scorecard.messaging?.score ??
+                v.scorecard.messaging?.messaging_score ??
+                0,
+            ),
+            rationale: v.scorecard.messaging?.rationale ?? "",
+          },
+          strategy: {
+            score: Number(
+              v.scorecard.strategy?.score ??
+                v.scorecard.strategy?.strategy_score ??
+                0,
+            ),
+            rationale: v.scorecard.strategy?.rationale ?? "",
+          },
+        }
+      : undefined;
 
     return {
       label: v?.label || `Option ${i + 1}`,
@@ -257,7 +269,8 @@ function parseEmailFormat(copy: string): {
   subject: string | null;
   body: string;
 } {
-  const subjectRe = /^\s*\*{0,2}\s*Subject\s*\*{0,2}\s*:\s*(.+?)(?:\*{0,2})?\s*(?:\n|$)/i;
+  const subjectRe =
+    /^\s*\*{0,2}\s*Subject\s*\*{0,2}\s*:\s*(.+?)(?:\*{0,2})?\s*(?:\n|$)/i;
   const m = copy.match(subjectRe);
   if (!m) return { subject: null, body: copy };
   let subject = m[1].trim().replace(/\*+$/, ""); // Remove trailing asterisks
@@ -368,7 +381,7 @@ export default function WriteSection({
     const response = await onCallAgent(prompt);
     if (response) {
       // Check if the response indicates cancellation
-      if (response.error === 'Polling cancelled') {
+      if (response.error === "Polling cancelled") {
         setError(null); // Don't show an error for cancellation
         // Restore previous result on cancel
         if (prevResult) {
@@ -475,6 +488,30 @@ export default function WriteSection({
     Math.max(0, enrichedVariations.length - 1),
   );
   const activeVariant = enrichedVariations[safeIndex];
+
+  // Carousel navigation. Arrows (desktop), swipe + dots (mobile) all route
+  // through these so behaviour and clamping stay consistent.
+  const canPrev = safeIndex > 0;
+  const canNext = safeIndex < enrichedVariations.length - 1;
+  const goPrev = () => setCarouselIndex((i) => Math.max(0, i - 1));
+  const goNext = () =>
+    setCarouselIndex((i) => Math.min(enrichedVariations.length - 1, i + 1));
+
+  // Horizontal swipe to change variant on touch devices (arrows are hidden
+  // below the lg breakpoint). Track only the X delta so vertical scrolling of
+  // the card body is left untouched.
+  const touchStartX = useRef<number | null>(null);
+  const SWIPE_THRESHOLD = 40;
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (dx > SWIPE_THRESHOLD) goPrev();
+    else if (dx < -SWIPE_THRESHOLD) goNext();
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6 lg:gap-8">
@@ -654,91 +691,124 @@ export default function WriteSection({
             Use the buttons below the card to navigate options
           </p>
         </div>
-        <section className="bg-studio-card rounded-2xl border border-studio-border p-4 lg:p-5 flex flex-col lg:flex-row lg:items-center flex-1 gap-3">
+        <section className="bg-studio-card rounded-2xl border border-studio-border p-4 lg:p-5 flex flex-row items-stretch flex-1 gap-3">
           {/* Left arrow */}
           {result && enrichedVariations.length > 0 && (
             <button
               type="button"
-              onClick={() => setCarouselIndex(Math.max(0, carouselIndex - 1))}
-              disabled={carouselIndex === 0}
+              onClick={goPrev}
+              disabled={!canPrev}
               aria-label="Previous variant"
-              className="hidden lg:flex items-center justify-center h-8 w-8 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-studio-border flex-shrink-0"
+              className="flex self-center items-center justify-center h-8 w-8 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-studio-border flex-shrink-0"
             >
               <ArrowLeft className="h-4 w-4 text-studio-ink" />
             </button>
           )}
 
           <div className="flex-1 flex flex-col min-h-0">
-            {/* Empty state */}
-            {!loading && !result && (
-              <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-                <p className="font-bold text-base text-studio-ink">
-                  Fill out the brief on the left
-                </p>
-                <p className="text-sm text-studio-mutedSoft mt-2 leading-relaxed">
-                  After you have completed the brief, click{" "}
-                  <span className="font-bold text-studio-ink">Generate</span> to
-                  see three options to review{" "}
-                  <span className="font-bold text-studio-ink">here</span>.
-                </p>
-              </div>
-            )}
+            <div className="flex-1 flex flex-col min-h-0">
+              {/* Empty state */}
+              {!loading && !result && (
+                <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+                  <p className="font-bold text-base text-studio-ink">
+                    Fill out the brief on the left
+                  </p>
+                  <p className="text-sm text-studio-mutedSoft mt-2 leading-relaxed">
+                    After you have completed the brief, click{" "}
+                    <span className="font-bold text-studio-ink">Generate</span>{" "}
+                    to see three options to review{" "}
+                    <span className="font-bold text-studio-ink">here</span>.
+                  </p>
+                </div>
+              )}
 
-            {/* Loading state */}
-            {loading && (
-              <div className="flex-1 flex flex-col gap-3">
-                <p className="text-sm">
-                  <LoadingWords
-                    words={COMPOSE_LOADING_WORDS}
-                    className="italic text-studio-mutedSoft"
+              {/* Loading state */}
+              {loading && (
+                <div className="flex-1 flex flex-col gap-3">
+                  <p className="text-sm">
+                    <LoadingWords
+                      words={COMPOSE_LOADING_WORDS}
+                      className="italic text-studio-mutedSoft"
+                    />
+                  </p>
+                  <Skeleton className="h-4 w-2/3 bg-studio-ink/80" />
+                  <Skeleton className="h-5 w-full bg-studio-ink/80" />
+                  <Skeleton className="h-5 w-5/6 bg-studio-ink/80" />
+                  <Skeleton className="h-5 w-4/6 bg-studio-ink/80" />
+                </div>
+              )}
+
+              {/* Result state — single variant */}
+              {!loading &&
+                result &&
+                enrichedVariations.length > 0 &&
+                activeVariant && (
+                  <div
+                    className="flex-1 flex flex-col min-h-0"
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                  >
+                    <VariantCard
+                      key={activeVariant.differentiator || safeIndex}
+                      index={safeIndex}
+                      variation={activeVariant}
+                      mandatories={mandatories}
+                      onSendToRefine={() => {
+                        // Save the selected variant as V1 when sending to Refine.
+                        // This creates a new chat if one doesn't exist yet.
+                        void saveVersion({
+                          copy: activeVariant.copy,
+                          scores: activeVariant.scores ?? null,
+                          source: "compose",
+                        });
+                        onSendToRefine(
+                          activeVariant.copy,
+                          activeVariant.scores,
+                        );
+                      }}
+                      onCopy={() => handleCopy(activeVariant, safeIndex)}
+                      copied={copiedIndex === safeIndex}
+                      onRegenerate={() =>
+                        handleRegenerateOne(
+                          activeVariant.differentiator,
+                          activeVariant.copy,
+                        )
+                      }
+                      regenerating={
+                        regeneratingDiff?.toLowerCase() ===
+                        activeVariant.differentiator.toLowerCase()
+                      }
+                    />
+                  </div>
+                )}
+
+              {!loading && result && enrichedVariations.length === 0 && (
+                <div className="flex-1 flex items-center justify-center text-center px-6">
+                  <p className="text-sm text-studio-muted">
+                    No variations parsed from the response. Check the agent log.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Dot indicators — shown on all screen sizes. Swipe is also
+            available on the card itself for touch devices. */}
+            {result && enrichedVariations.length > 0 && (
+              <div className="flex items-center justify-center gap-1.5 my-3">
+                {enrichedVariations.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setCarouselIndex(i)}
+                    aria-label={`Go to variant ${i + 1}`}
+                    aria-current={i === safeIndex}
+                    className={`h-2 w-2 rounded-full transition-colors ${
+                      i === safeIndex
+                        ? "bg-studio-ink"
+                        : "bg-studio-border hover:bg-studio-mutedSoft"
+                    }`}
                   />
-                </p>
-                <Skeleton className="h-4 w-2/3 bg-studio-ink/80" />
-                <Skeleton className="h-5 w-full bg-studio-ink/80" />
-                <Skeleton className="h-5 w-5/6 bg-studio-ink/80" />
-                <Skeleton className="h-5 w-4/6 bg-studio-ink/80" />
-              </div>
-            )}
-
-            {/* Result state — single variant */}
-            {!loading && result && enrichedVariations.length > 0 && activeVariant && (
-              <div className="flex-1 flex flex-col min-h-0">
-                <VariantCard
-                  key={activeVariant.differentiator || safeIndex}
-                  index={safeIndex}
-                  variation={activeVariant}
-                  mandatories={mandatories}
-                  onSendToRefine={() => {
-                    // Save the selected variant as V1 when sending to Refine.
-                    // This creates a new chat if one doesn't exist yet.
-                    void saveVersion({
-                      copy: activeVariant.copy,
-                      scores: activeVariant.scores ?? null,
-                      source: "compose",
-                    });
-                    onSendToRefine(activeVariant.copy, activeVariant.scores);
-                  }}
-                  onCopy={() => handleCopy(activeVariant, safeIndex)}
-                  copied={copiedIndex === safeIndex}
-                  onRegenerate={() =>
-                    handleRegenerateOne(
-                      activeVariant.differentiator,
-                      activeVariant.copy,
-                    )
-                  }
-                  regenerating={
-                    regeneratingDiff?.toLowerCase() ===
-                    activeVariant.differentiator.toLowerCase()
-                  }
-                />
-              </div>
-            )}
-
-            {!loading && result && enrichedVariations.length === 0 && (
-              <div className="flex-1 flex items-center justify-center text-center px-6">
-                <p className="text-sm text-studio-muted">
-                  No variations parsed from the response. Check the agent log.
-                </p>
+                ))}
               </div>
             )}
           </div>
@@ -747,14 +817,10 @@ export default function WriteSection({
           {result && enrichedVariations.length > 0 && (
             <button
               type="button"
-              onClick={() =>
-                setCarouselIndex(
-                  Math.min(enrichedVariations.length - 1, carouselIndex + 1),
-                )
-              }
-              disabled={carouselIndex === enrichedVariations.length - 1}
+              onClick={goNext}
+              disabled={!canNext}
               aria-label="Next variant"
-              className="hidden lg:flex items-center justify-center h-8 w-8 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-studio-border flex-shrink-0"
+              className="flex self-center items-center justify-center h-8 w-8 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-studio-border flex-shrink-0"
             >
               <ArrowRight className="h-4 w-4 text-studio-ink" />
             </button>
@@ -840,7 +906,9 @@ function VariantCard({
                 <span className="text-xs font-bold text-studio-ink capitalize">
                   {lens}
                 </span>
-                <span className={`text-2xl font-bold ${scoreColorClass(score)}`}>
+                <span
+                  className={`text-2xl font-bold ${scoreColorClass(score)}`}
+                >
                   {score}
                 </span>
                 {rationale && (
@@ -853,16 +921,22 @@ function VariantCard({
           })}
           <div className="flex flex-col">
             <span className="text-xs font-bold text-studio-ink">Overall</span>
-            <span className={`text-2xl font-bold ${scoreColorClass(overallScore({
-              voice: { score: variation.scores.voice },
-              messaging: { score: variation.scores.messaging },
-              strategy: { score: variation.scores.strategy },
-            }).score)}`}>
-              {overallScore({
-                voice: { score: variation.scores.voice },
-                messaging: { score: variation.scores.messaging },
-                strategy: { score: variation.scores.strategy },
-              }).score}
+            <span
+              className={`text-2xl font-bold ${scoreColorClass(
+                overallScore({
+                  voice: { score: variation.scores.voice },
+                  messaging: { score: variation.scores.messaging },
+                  strategy: { score: variation.scores.strategy },
+                }).score,
+              )}`}
+            >
+              {
+                overallScore({
+                  voice: { score: variation.scores.voice },
+                  messaging: { score: variation.scores.messaging },
+                  strategy: { score: variation.scores.strategy },
+                }).score
+              }
             </span>
           </div>
         </div>
@@ -885,8 +959,9 @@ function VariantCard({
       </div>
 
       {/* Footer actions */}
-      <footer className="flex items-center justify-evenly gap-2 pt-3 border-t border-studio-border text-xs text-studio-muted">
+      <footer className="grid grid-cols-3 items-center gap-2 pt-3 border-t border-studio-border text-xs text-studio-muted">
         <ActionBtn
+          className="justify-self-start"
           icon={
             regenerating ? (
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -899,11 +974,13 @@ function VariantCard({
           disabled={regenerating}
         />
         <ActionBtn
+          className="justify-self-center"
           icon={<ArrowUpRight className="h-3 w-3" />}
           label="Send to Refine"
           onClick={onSendToRefine}
         />
         <ActionBtn
+          className="justify-self-end"
           icon={
             copied ? (
               <Check className="h-3 w-3" />
@@ -924,17 +1001,19 @@ function ActionBtn({
   label,
   onClick,
   disabled,
+  className,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick?: () => void;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center gap-1 px-1.5 py-1 rounded transition-colors ${disabled ? "opacity-40 cursor-not-allowed" : "hover:text-studio-ink hover:bg-studio-cardSubtle"}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-1 rounded transition-colors ${disabled ? "opacity-40 cursor-not-allowed" : "hover:text-studio-ink hover:bg-studio-cardSubtle"}${className ? ` ${className}` : ""}`}
     >
       {icon}
       <span>{label}</span>
