@@ -1716,7 +1716,9 @@ function LensCard({
 }) {
   // While (re)scoring, show a spinner in place of the score number, keeping the
   // "/100" and the "from xx/100" baseline so the delta context stays visible.
-  const showPrevious = previous != null && (loading || previous !== current);
+  // Show the baseline whenever a prior score exists — including when it's equal
+  // to the current score (a refine that held a lens steady still has context).
+  const showPrevious = previous != null;
   return (
     <button
       type="button"
