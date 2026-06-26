@@ -92,6 +92,9 @@ export default function Page() {
   const [composeNonce, setComposeNonce] = useState(0)
   const [refineNonce, setRefineNonce] = useState(0)
   const sessionIdRef = useRef('')
+  // Abort controller for the in-flight (non-quiet) agent call, so Compose/Refine
+  // can cancel a running generation. Quiet re-scoring uses its own controller.
+  const agentAbortRef = useRef<AbortController | null>(null)
   const { profile: brandProfile, loading: brandLoading } = useBrandProfile()
   const { loadChat, loadVersion, deleteVersion, startNewChat } = useChatHistory()
   const { email, isAdmin, givenName, familyName } = useSSO()
@@ -258,8 +261,10 @@ export default function Page() {
   // the document view isn't replaced by the loading skeleton.
   const handleCallAgent = useCallback(async (prompt: string, agentId: string, quiet = false): Promise<any> => {
     if (!quiet) setLoading(true)
+    const controller = quiet ? null : new AbortController()
+    if (controller) agentAbortRef.current = controller
     try {
-      const result = await callAIAgent(prompt, agentId, { session_id: sessionIdRef.current })
+      const result = await callAIAgent(prompt, agentId, { session_id: sessionIdRef.current, signal: controller?.signal })
       if (result.success) {
         const agentResult = result.response?.result
         if (agentResult && typeof agentResult === 'object') return agentResult
@@ -271,6 +276,7 @@ export default function Page() {
       return null
     } finally {
       if (!quiet) setLoading(false)
+      if (controller && agentAbortRef.current === controller) agentAbortRef.current = null
     }
   }, [])
 
@@ -386,10 +392,10 @@ export default function Page() {
         {/* Main content */}
         <main className="max-w-[1400px] mx-auto px-2 py-4">
           {activeTab === 'compose' && (
-            <WriteSection key={`compose-${composeNonce}`} channel={channel} audience={audience} onCallAgent={onCompose} loading={loading} onSendToRefine={sendToRefine} onChannelChange={setChannel} onAudienceChange={setAudience} />
+            <WriteSection key={`compose-${composeNonce}`} channel={channel} audience={audience} onCallAgent={onCompose} loading={loading} onSendToRefine={sendToRefine} onChannelChange={setChannel} onAudienceChange={setAudience} composeAbortControllerRef={agentAbortRef} />
           )}
           {activeTab === 'refine' && (
-            <ReviewSection key={`refine-${refineNonce}`} channel={channel} audience={audience} onCallAgent={onRefine} onScore={onScore} loading={loading} pendingCopy={pendingRefineCopy} pendingScores={pendingRefineScores} onPendingConsumed={consumePending} reopenedVersion={pendingReopen} onReopenConsumed={consumeReopen} onChannelChange={setChannel} onAudienceChange={setAudience} />
+            <ReviewSection key={`refine-${refineNonce}`} channel={channel} audience={audience} onCallAgent={onRefine} onScore={onScore} loading={loading} pendingCopy={pendingRefineCopy} pendingScores={pendingRefineScores} onPendingConsumed={consumePending} reopenedVersion={pendingReopen} onReopenConsumed={consumeReopen} onChannelChange={setChannel} onAudienceChange={setAudience} refineAbortControllerRef={agentAbortRef} />
           )}
           {activeTab === 'learn' && (
             <ExplainSection

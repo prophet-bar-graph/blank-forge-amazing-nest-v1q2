@@ -352,6 +352,8 @@ interface ReviewSectionProps {
   onChannelChange: (channel: string) => void;
   onAudienceChange: (audience: string) => void;
   rescoringAbortControllerRef?: React.MutableRefObject<AbortController | null>;
+  // Abort controller for the in-flight refine call, so the user can cancel it.
+  refineAbortControllerRef?: React.MutableRefObject<AbortController | null>;
 }
 
 const LENGTH_OPTIONS = ["Shorter", "Same", "Longer"];
@@ -370,6 +372,7 @@ export default function ReviewSection({
   onChannelChange,
   onAudienceChange,
   rescoringAbortControllerRef,
+  refineAbortControllerRef,
 }: ReviewSectionProps) {
   const { profile } = useBrandProfile();
   const { saveVersion, activeChat, activeChatId, activeVersionIndex } =
@@ -1084,24 +1087,25 @@ export default function ReviewSection({
             />
           </div>
 
-          <button
-            type="button"
-            onClick={() => handleRefine()}
-            disabled={loading || !pastedCopy.trim()}
-            className="self-end mt-4 h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? (
-              <span className="inline-flex items-center gap-3">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <LoadingWords words={REFINE_LOADING_WORDS} className="italic" />
-              </span>
-            ) : (
-              <>
-                <span>Refine Copy</span>
-                <ArrowRight className="h-4 w-4" />
-              </>
-            )}
-          </button>
+          {loading ? (
+            <button
+              type="button"
+              onClick={() => refineAbortControllerRef?.current?.abort()}
+              className="self-end mt-4 h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-card border border-studio-border text-studio-ink hover:bg-studio-border transition-colors"
+            >
+              <span>Cancel</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleRefine()}
+              disabled={!pastedCopy.trim()}
+              className="self-end mt-4 h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span>Refine Copy</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 p-2.5 rounded-md bg-studio-card border border-studio-border text-xs mt-3">
@@ -1243,31 +1247,31 @@ export default function ReviewSection({
               className="bg-white border-studio-muted/30 text-studio-ink placeholder:text-studio-muted/65 text-sm rounded-md resize-none mb-3"
             />
             <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  const trimmed = noteDraft.trim();
-                  // Cumulative: refine the current candidate (incl. manual edits), not the original.
-                  handleRefine({
-                    baseline: currentCandidate,
-                    notesOverride: trimmed ? [trimmed] : [],
-                  });
-                }}
-                disabled={loading}
-                className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span>Refining…</span>
-                  </span>
-                ) : (
-                  <>
-                    <span>Refine Copy</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </>
-                )}
-              </button>
+              {loading ? (
+                <button
+                  type="button"
+                  onClick={() => refineAbortControllerRef?.current?.abort()}
+                  className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-card border border-studio-border text-studio-ink hover:bg-studio-border transition-colors"
+                >
+                  <span>Cancel</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const trimmed = noteDraft.trim();
+                    // Cumulative: refine the current candidate (incl. manual edits), not the original.
+                    handleRefine({
+                      baseline: currentCandidate,
+                      notesOverride: trimmed ? [trimmed] : [],
+                    });
+                  }}
+                  className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <span>Refine Copy</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           </div>
         )}
