@@ -385,7 +385,7 @@ export default function ReviewSection({
   const [error, setError] = useState<string | null>(null);
   const [allAccepted, setAllAccepted] = useState(false);
   const [viewMode, setViewMode] = useState<"diff" | "refined" | "original">(
-    "diff",
+    "refined",
   );
   // Which lens score card is expanded into the shared rationale panel below the
   // row. null = collapsed. Clicking the active card again collapses it.
@@ -396,7 +396,10 @@ export default function ReviewSection({
   // A manual edit diverges `candidateCopy` from the agent's text (an "override").
   // Nothing is persisted until the user clicks "Save to history".
   const [candidateCopy, setCandidateCopy] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  // The Review view always renders the document/scores shell — there is no
+  // separate "paste your copy" empty state. With no result yet we start in edit
+  // mode (an empty editor to type/paste into) and the scores read 0.
+  const [isEditing, setIsEditing] = useState(true);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [lastNotes, setLastNotes] = useState<string[]>([]);
@@ -533,12 +536,12 @@ export default function ReviewSection({
       setResult(null);
       setError(null);
       setAllAccepted(false);
-      setViewMode("diff");
+      setViewMode("refined");
       setPresetOriginalScores(null);
       setNotes([]);
       setNoteDraft("");
       setCandidateCopy(null);
-      setIsEditing(false);
+      setIsEditing(true);
       setJustSaved(false);
       setLastNotes([]);
       setReopenOverallNote(null);
@@ -940,184 +943,6 @@ export default function ReviewSection({
     return groups;
   }, [result]);
 
-  // Empty state — paste & configure. 2-col layout: Brief (left) | Submit Your
-  // Copy (right). "Keep Copy on Brand" explanation lives under the brief card
-  // on the left so the right column stays focused on copy entry + Refine.
-  if (!result) {
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6 lg:gap-8">
-        {/* ---- LEFT: Step 01 — Build the Brief ---- */}
-        <div className="flex flex-col">
-          <StepEyebrow step={1} label="Build the Brief" />
-
-          <section className="rounded-2xl border border-black/75 p-4 lg:p-5 flex flex-col">
-            <div className="space-y-3">
-              {/* Channel */}
-              <div>
-                <h4 className="font-bold text-sm text-studio-ink mb-2">
-                  Select a channel:
-                </h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {CHANNELS.map((ch) => (
-                    <button
-                      key={ch}
-                      type="button"
-                      onClick={() => onChannelChange(ch)}
-                      className={`px-3 py-1 rounded-full text-xs transition ${
-                        channel === ch
-                          ? "bg-studio-ink text-studio-page"
-                          : "bg-studio-page border border-studio-border text-studio-muted hover:text-studio-ink"
-                      }`}
-                    >
-                      {ch.toLowerCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Audience */}
-              <div>
-                <h4 className="font-bold text-sm text-studio-ink">
-                  Define the audience:
-                </h4>
-                <p className="text-xs italic text-studio-mutedSoft mb-1">
-                  Who do you want to talk to?
-                </p>
-                <Input
-                  value={audience}
-                  onChange={(e) => onAudienceChange(e.target.value)}
-                  placeholder="Internal leaders"
-                  className="bg-studio-page border-studio-border text-sm text-studio-ink placeholder:text-studio-mutedSoft"
-                />
-              </div>
-
-              {/* Length */}
-              <div>
-                <h4 className="font-bold text-sm text-studio-ink mb-2">
-                  Select length:
-                </h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {LENGTH_OPTIONS.map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setLengthPref(opt)}
-                      className={`px-3 py-1 rounded-full text-xs transition ${
-                        lengthPref === opt
-                          ? "bg-studio-ink text-studio-page"
-                          : "bg-studio-page border border-studio-border text-studio-muted hover:text-studio-ink"
-                      }`}
-                    >
-                      {opt.toLowerCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tone */}
-              <div>
-                <h4 className="font-bold text-sm text-studio-ink">Tone:</h4>
-                <p className="text-xs italic text-studio-mutedSoft mb-1">
-                  How do we want to sound?
-                </p>
-                <Slider
-                  value={toneIntensity}
-                  onValueChange={setToneIntensity}
-                  min={1}
-                  max={10}
-                  step={1}
-                />
-                <div className="flex justify-between text-xs text-studio-mutedSoft mt-1">
-                  <span>subtle</span>
-                  <span>bold</span>
-                </div>
-                <p className="text-sm font-bold text-studio-ink mt-1">
-                  {toneIntensity[0]}/10
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Keep Copy on Brand — below the brief card */}
-          <aside className="px-1 pt-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Lightbulb className="h-5 w-5 text-studio-ink" />
-              <h3 className="font-bold text-base text-studio-ink">
-                Keep Copy on Brand
-              </h3>
-            </div>
-            <p className="text-sm text-studio-muted leading-relaxed mb-3">
-              Your copy will be assessed based on brand{" "}
-              <span className="font-bold text-studio-ink">
-                fit across Voice, Messaging, and Strategy
-              </span>
-              .
-            </p>
-            <p className="text-sm text-studio-muted leading-relaxed">
-              You&rsquo;ll also get a{" "}
-              <span className="font-bold text-studio-ink">
-                rationale for every recommended revision
-              </span>{" "}
-              so you can understand why we made it.
-            </p>
-          </aside>
-        </div>
-
-        {/* ---- RIGHT: Step 02 — Submit Your Copy ---- */}
-        <div className="flex flex-col">
-          <StepEyebrow step={2} label="Submit Your Copy" />
-
-          <div className="space-y-3">
-            <Textarea
-              placeholder="Copy"
-              value={pastedCopy}
-              onChange={(e) => setPastedCopy(e.target.value)}
-              rows={10}
-              className="bg-studio-page border-studio-border text-studio-ink placeholder:text-studio-mutedSoft resize-none rounded-md text-sm leading-relaxed"
-            />
-            <Textarea
-              placeholder="Notes (optional)"
-              value={notes.join("\n")}
-              // Store raw lines as-typed; trailing spaces/blank lines are
-              // trimmed only at the point of use (handleRefine). Trimming here
-              // would fight the controlled value and eat spaces mid-keystroke.
-              onChange={(e) => setNotes(e.target.value.split("\n"))}
-              rows={6}
-              className="bg-studio-page border-studio-border text-studio-ink placeholder:text-studio-mutedSoft resize-none rounded-md text-sm leading-relaxed"
-            />
-          </div>
-
-          {loading ? (
-            <button
-              type="button"
-              onClick={() => refineAbortControllerRef?.current?.abort()}
-              className="self-end mt-4 h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-card border border-studio-border text-studio-ink hover:bg-studio-border transition-colors"
-            >
-              <span>Cancel</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => handleRefine()}
-              disabled={!pastedCopy.trim()}
-              className="self-end mt-4 h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <span>Refine Copy</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          )}
-
-          {error && (
-            <div className="flex items-center gap-2 p-2.5 rounded-md bg-studio-card border border-studio-border text-xs mt-3">
-              <AlertCircle className="h-3.5 w-3.5 text-studio-scoreRed flex-shrink-0" />
-              <p className="text-studio-ink flex-1">{error}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   // Result state
   const ratio = diffChangeRatio(segments);
   const useBlockDiff = ratio > 0.6;
@@ -1233,54 +1058,78 @@ export default function ReviewSection({
           </section>
         </div>
 
-        {/* Notes + Refine Again — shown when result exists */}
-        {result && (
-          <div className="pt-2">
-            <p className="font-bold text-sm text-studio-ink mb-2">
-              Any notes for the next pass?
-            </p>
-            <Textarea
-              placeholder="Notes (optional)"
-              value={noteDraft}
-              onChange={(e) => setNoteDraft(e.target.value)}
-              rows={3}
-              className="bg-white border-studio-muted/30 text-studio-ink placeholder:text-studio-muted/65 text-sm rounded-md resize-none mb-3"
-            />
-            <div className="flex justify-end">
-              {loading ? (
-                <button
-                  type="button"
-                  onClick={() => refineAbortControllerRef?.current?.abort()}
-                  className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-card border border-studio-border text-studio-ink hover:bg-studio-border transition-colors"
-                >
-                  <span>Cancel</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const trimmed = noteDraft.trim();
-                    // Cumulative: refine the current candidate (incl. manual edits), not the original.
-                    handleRefine({
-                      baseline: currentCandidate,
-                      notesOverride: trimmed ? [trimmed] : [],
-                    });
-                  }}
-                  className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <span>Refine Copy</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+        {/* Notes + Refine — always visible */}
+        <div className="pt-2">
+          <p className="font-bold text-sm text-studio-ink mb-2">
+            Any notes for the next pass?
+          </p>
+          <Textarea
+            placeholder="Notes (optional)"
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            rows={3}
+            className="bg-white border-studio-muted/30 text-studio-ink placeholder:text-studio-muted/65 text-sm rounded-md resize-none mb-3"
+          />
+          <div className="flex justify-end">
+            {loading ? (
+              <button
+                type="button"
+                onClick={() => refineAbortControllerRef?.current?.abort()}
+                className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-card border border-studio-border text-studio-ink hover:bg-studio-border transition-colors"
+              >
+                <span>Cancel</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  const trimmed = noteDraft.trim();
+                  // Cumulative: refine the current candidate (incl. manual
+                  // edits). Fall back to the source copy on the first pass,
+                  // when nothing has been refined/edited yet.
+                  handleRefine({
+                    baseline: currentCandidate || pastedCopy,
+                    notesOverride: trimmed ? [trimmed] : [],
+                  });
+                }}
+                disabled={isEditing || !(currentCandidate || pastedCopy).trim()}
+                className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <span>Refine Copy</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
-        )}
+        </div>
+        {/* Keep Copy on Brand — below the brief card */}
+        <aside className="px-1">
+          <div className="flex items-center gap-2 mb-3">
+            <Lightbulb className="h-5 w-5 text-studio-ink" />
+            <h3 className="font-bold text-base text-studio-ink">
+              Keep Copy on Brand
+            </h3>
+          </div>
+          <p className="text-sm text-studio-muted leading-relaxed mb-3">
+            Your copy will be assessed based on brand{" "}
+            <span className="font-bold text-studio-ink">
+              fit across Voice, Messaging, and Strategy
+            </span>
+            .
+          </p>
+          <p className="text-sm text-studio-muted leading-relaxed">
+            You&rsquo;ll also get a{" "}
+            <span className="font-bold text-studio-ink">
+              rationale for every recommended revision
+            </span>{" "}
+            so you can understand why we made it.
+          </p>
+        </aside>
       </div>
 
       {/* ---- RIGHT COLUMN: Copy Input or Document ---- */}
       <div className="flex flex-col">
         {/* Step 2 label */}
-        {result && <StepEyebrow step={2} label="Refine Copy" />}
+        <StepEyebrow step={2} label="Refine Copy" />
 
         {/* Document column wrapper — flex-col so the bordered document
             stretches and Accept All sits at the bottom (top-aligning with the
@@ -1289,81 +1138,81 @@ export default function ReviewSection({
           <div className="min-h-[400px] flex-1 flex flex-col rounded-2xl border border-studio-border p-6 lg:p-8">
             {/* Scores — above the Refine Copy tabs. Each card is a button that
                 expands its rationale into the shared panel below the row. */}
-            {result &&
-              (() => {
-                const lensCards = [
-                  {
-                    key: "overall" as const,
-                    label: "Overall Brand Fit",
-                    current: currentOverall,
-                    previous: previousOverall,
-                    body: overallBody,
-                  },
-                  {
-                    key: "voice" as const,
-                    label: "Voice",
-                    current: currentScores?.voice,
-                    previous: previousScores?.voice,
-                    body: changesByLens.voice.length
-                      ? joinChanges(changesByLens.voice)
-                      : null,
-                  },
-                  {
-                    key: "messaging" as const,
-                    label: "Messaging",
-                    current: currentScores?.messaging,
-                    previous: previousScores?.messaging,
-                    body: changesByLens.messaging.length
-                      ? joinChanges(changesByLens.messaging)
-                      : null,
-                  },
-                  {
-                    key: "strategy" as const,
-                    label: "Strategy",
-                    current: currentScores?.strategy,
-                    previous: previousScores?.strategy,
-                    body: changesByLens.strategy.length
-                      ? joinChanges(changesByLens.strategy)
-                      : null,
-                  },
-                ];
-                const open = lensCards.find((l) => l.key === openLens);
-                return (
-                  <div className="pb-4 mb-4 border-b border-studio-border">
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                      {lensCards.map((lens) => (
-                        <LensCard
-                          key={lens.key}
-                          label={lens.label}
-                          current={lens.current}
-                          previous={lens.previous}
-                          loading={rescoring}
-                          hasRationale={!!lens.body}
-                          active={openLens === lens.key}
-                          onClick={
-                            lens.body
-                              ? () =>
-                                  setOpenLens((prev) =>
-                                    prev === lens.key ? null : lens.key,
-                                  )
-                              : undefined
-                          }
-                        />
-                      ))}
-                    </div>
-                    {open?.body && (
-                      <div className="mt-3 rounded-lg bg-studio-cardSubtle p-3">
-                        <p className="font-bold text-xs text-studio-ink mb-1">
-                          {open.label}
-                        </p>
-                        <p className="text-sm text-studio-ink/85 leading-relaxed">
-                          {open.body}
-                        </p>
-                      </div>
-                    )}
+            {(() => {
+              // With no result yet, scores read 0 (and there's no prior baseline).
+              const lensCards = [
+                {
+                  key: "overall" as const,
+                  label: "Overall Brand Fit",
+                  current: currentOverall ?? 0,
+                  previous: previousOverall,
+                  body: overallBody,
+                },
+                {
+                  key: "voice" as const,
+                  label: "Voice",
+                  current: currentScores?.voice ?? 0,
+                  previous: previousScores?.voice,
+                  body: changesByLens.voice.length
+                    ? joinChanges(changesByLens.voice)
+                    : null,
+                },
+                {
+                  key: "messaging" as const,
+                  label: "Messaging",
+                  current: currentScores?.messaging ?? 0,
+                  previous: previousScores?.messaging,
+                  body: changesByLens.messaging.length
+                    ? joinChanges(changesByLens.messaging)
+                    : null,
+                },
+                {
+                  key: "strategy" as const,
+                  label: "Strategy",
+                  current: currentScores?.strategy ?? 0,
+                  previous: previousScores?.strategy,
+                  body: changesByLens.strategy.length
+                    ? joinChanges(changesByLens.strategy)
+                    : null,
+                },
+              ];
+              const open = lensCards.find((l) => l.key === openLens);
+              return (
+                <div className="pb-4 mb-4 border-b border-studio-border">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {lensCards.map((lens) => (
+                      <LensCard
+                        key={lens.key}
+                        label={lens.label}
+                        current={lens.current}
+                        previous={lens.previous}
+                        loading={rescoring}
+                        hasRationale={!!lens.body}
+                        active={openLens === lens.key}
+                        onClick={
+                          lens.body
+                            ? () =>
+                                setOpenLens((prev) =>
+                                  prev === lens.key ? null : lens.key,
+                                )
+                            : undefined
+                        }
+                      />
+                    ))}
                   </div>
-                );
-              })()}
+                  {open?.body && (
+                    <div className="mt-3 rounded-lg bg-studio-cardSubtle p-3">
+                      <p className="font-bold text-xs text-studio-ink mb-1">
+                        {open.label}
+                      </p>
+                      <p className="text-sm text-studio-ink/85 leading-relaxed">
+                        {open.body}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {/* Right column header — "Refine Copy:" label + tabs (Annotated /
               Refined / Original). Accept All moved out, below the box. */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -1526,8 +1375,9 @@ export default function ReviewSection({
                               setCandidateCopy(e.target.value);
                               setJustSaved(false);
                             }}
+                            placeholder="Paste or write your copy here, then Refine Copy."
                             rows={12}
-                            className="bg-studio-page border-studio-border text-studio-ink text-base md:text-base leading-relaxed resize-none rounded-md w-full flex-1 min-h-0"
+                            className="bg-studio-page border-studio-border text-studio-ink placeholder:text-studio-mutedSoft text-base md:text-base leading-relaxed resize-none rounded-md w-full flex-1 min-h-0"
                           />
                         ) : (
                           <MarkdownText
@@ -1616,6 +1466,13 @@ export default function ReviewSection({
             })()}
           </div>
 
+          {error && (
+            <div className="flex items-center gap-2 p-2.5 rounded-md bg-studio-card border border-studio-border text-xs mt-3">
+              <AlertCircle className="h-3.5 w-3.5 text-studio-scoreRed flex-shrink-0" />
+              <p className="text-studio-ink flex-1">{error}</p>
+            </div>
+          )}
+
           {/* Save to history — commits the current candidate (refine result or
             manual override) as a new version in the active chat AND accepts it
             (locks the view to the refined copy). "Refine Again" reopens iteration. */}
@@ -1635,7 +1492,11 @@ export default function ReviewSection({
             <Button
               onClick={handleSaveClick}
               disabled={
-                saving || justSaved || !currentCandidate.trim() || !isDirty
+                isEditing ||
+                saving ||
+                justSaved ||
+                !currentCandidate.trim() ||
+                !isDirty
               }
               className="bg-studio-ink hover:bg-studio-muted text-studio-page rounded-md h-10 px-5 text-sm font-medium"
             >
