@@ -35,6 +35,41 @@ function textToList(text: string): string[] {
   return text.split(',').map(s => s.trim()).filter(Boolean)
 }
 
+// Comma-separated list input that keeps its own raw text buffer. Editing the
+// stored array directly on every keystroke would round-trip through
+// textToList/listToText, which trims each segment — so a trailing space (or
+// trailing comma) would be stripped before it could render, making it feel like
+// you can't type spaces at the end. Holding the raw text locally lets the user
+// type freely; we only parse into the array for the parent. We resync the
+// buffer when the external array changes to something our text doesn't already
+// represent (sample load, PDF extraction, opening with an existing profile).
+function ListInput({ value, onChange, className, placeholder, disabled }: {
+  value: string[] | undefined
+  onChange: (next: string[]) => void
+  className?: string
+  placeholder?: string
+  disabled?: boolean
+}) {
+  const [text, setText] = useState(() => listToText(value))
+  useEffect(() => {
+    const incoming = listToText(value)
+    if (incoming !== listToText(textToList(text))) setText(incoming)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+  return (
+    <Input
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value)
+        onChange(textToList(e.target.value))
+      }}
+      className={className}
+      placeholder={placeholder}
+      disabled={disabled}
+    />
+  )
+}
+
 export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }: BrandOnboardingModalProps) {
   const { profile, applyProfile, userId } = useBrandProfile()
   const { isAdmin, email } = useSSO()
@@ -415,9 +450,9 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
               hint="Products / solution categories (comma-separated)"
               extractorEmpty={extractedEmpty.has('portfolioPillars')}
             >
-              <Input
-                value={listToText(workingProfile.portfolioPillars)}
-                onChange={(e) => setWorkingProfile({ ...workingProfile, portfolioPillars: textToList(e.target.value) })}
+              <ListInput
+                value={workingProfile.portfolioPillars}
+                onChange={(next) => setWorkingProfile({ ...workingProfile, portfolioPillars: next })}
                 className="bg-white border-studio-muted/30"
                 placeholder={extractedEmpty.has('portfolioPillars') ? undefined : 'e.g. Store Ops, Data Commerce, Local eCommerce'}
                 disabled={editingDisabled}
@@ -429,9 +464,9 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
               hint="Supporting messages or brand values (comma-separated)"
               extractorEmpty={extractedEmpty.has('partnerPillars')}
             >
-              <Input
-                value={listToText(workingProfile.partnerPillars)}
-                onChange={(e) => setWorkingProfile({ ...workingProfile, partnerPillars: textToList(e.target.value) })}
+              <ListInput
+                value={workingProfile.partnerPillars}
+                onChange={(next) => setWorkingProfile({ ...workingProfile, partnerPillars: next })}
                 className="bg-white border-studio-muted/30"
                 placeholder={extractedEmpty.has('partnerPillars') ? undefined : 'e.g. Designed for People, A Unified Ecosystem'}
                 disabled={editingDisabled}
@@ -443,9 +478,9 @@ export function BrandOnboardingModal({ open, onOpenChange, dismissable = true }:
               hint="Short voice / tone principles (comma-separated)"
               extractorEmpty={extractedEmpty.has('voicePrinciples')}
             >
-              <Input
-                value={listToText(workingProfile.voicePrinciples)}
-                onChange={(e) => setWorkingProfile({ ...workingProfile, voicePrinciples: textToList(e.target.value) })}
+              <ListInput
+                value={workingProfile.voicePrinciples}
+                onChange={(next) => setWorkingProfile({ ...workingProfile, voicePrinciples: next })}
                 className="bg-white border-studio-muted/30"
                 placeholder={extractedEmpty.has('voicePrinciples') ? undefined : 'e.g. Clear, Confident, Human'}
                 disabled={editingDisabled}
