@@ -76,30 +76,12 @@ export function VersionHistory({
     return () => ro.disconnect();
   }, [updateFades, versions.length]);
 
-  // The bar is pinned to the viewport bottom (position: fixed), so it's out of
-  // flow — measure its height and render an equal-height spacer in flow so the
-  // page can scroll its last content clear of the bar.
-  const barRef = useRef<HTMLDivElement>(null);
-  const [barHeight, setBarHeight] = useState(0);
-  useEffect(() => {
-    const el = barRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => setBarHeight(el.offsetHeight));
-    ro.observe(el);
-    setBarHeight(el.offsetHeight);
-    return () => ro.disconnect();
-  }, [versions.length]);
-
   // Nothing to show until a chat has at least one saved version.
   if (!activeChat || versions.length === 0) return null;
 
   return (
     <>
-      <div aria-hidden style={{ height: barHeight }} />
-      <div
-        ref={barRef}
-        className="fixed bottom-0 left-0 right-0 z-30 border-t border-studio-border bg-studio-cardSubtle"
-      >
+      <div className="mt-6 border-t border-studio-border bg-studio-cardSubtle">
         <div className="max-w-[1400px] mx-auto px-2 py-3">
           <div className="flex items-center gap-2 mb-2.5">
             <GitBranch className="h-3.5 w-3.5 text-studio-mutedSoft" />
