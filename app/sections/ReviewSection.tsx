@@ -867,12 +867,6 @@ export default function ReviewSection({
     return overallScore(result.scorecard);
   }, [result, allAccepted]);
 
-  const improvedOverall = useMemo(() => {
-    if (allAccepted) return { score: 92, status: "on-brand" as const };
-    if (!result?.improvedScorecard) return null;
-    return overallScore(result.improvedScorecard);
-  }, [result, allAccepted]);
-
   // ---- Current vs. previous lens scores ----
   // "Previous" is shown whenever a prior score exists — not just after a
   // refine/rescore: while you have unsaved changes it's the version you're
@@ -919,7 +913,10 @@ export default function ReviewSection({
     ? (loadedVersionScores ?? (improvedScores ? toFlat(originalScores) : null))
     : priorVersionScores;
 
-  const currentOverall = improvedOverall?.score ?? originalOverall?.score;
+  // Overall = the average of the currently displayed lens scores, computed the
+  // same way as the reopen path (overallFromFlat), so the Overall card can never
+  // disagree with the per-lens cards — whether fresh from a refine or reloaded.
+  const currentOverall = overallFromFlat(currentScores);
   const previousOverall = isDirty
     ? loadedVersionScores
       ? overallFromFlat(loadedVersionScores)
