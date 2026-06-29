@@ -41,6 +41,13 @@ export function lensScore(entry: LensEntry | string | undefined, lens: LensName)
     const seed = lens === 'voice' ? 28 : lens === 'messaging' ? 42 : 31
     return { score: seed, tone: 'bad' }
   }
+  // No usable rating. Honor an explicit numeric score (incl. the 0 of the
+  // empty/unscored document, so fresh chats read 0 — not the neutral midpoint).
+  // Only fall back to 50 when there's no numeric signal at all.
+  if (typeof e.score === 'number') {
+    const clamped = Math.max(0, Math.min(100, Math.round(e.score)))
+    return { score: clamped, tone: toneFor(clamped) }
+  }
   return { score: 50, tone: 'warn' }
 }
 
