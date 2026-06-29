@@ -71,11 +71,49 @@ type Scorecard = {
 };
 
 interface ReviewResult {
+  // The copy the agent refined FROM — the diff anchor and the "Original" tab.
+  // On a fresh/handed-off document (before any refine) it mirrors improvedCopy.
+  originalCopy: string;
   improvedCopy: string;
   changes: { text: string; lens: string }[];
   scorecard: Scorecard;
   improvedScorecard: Scorecard | null;
   raw: string;
+}
+
+// All-zero scorecard for the placeholder/empty document (scores read 0).
+function zeroScorecard(): Scorecard {
+  return {
+    voice: { score: 0, rationale: "" },
+    messaging: { score: 0, rationale: "" },
+    strategy: { score: 0, rationale: "" },
+  };
+}
+
+// A flat {voice,messaging,strategy} score map → a Scorecard (no rationale).
+function scorecardFromFlat(flat: {
+  voice: number;
+  messaging: number;
+  strategy: number;
+}): Scorecard {
+  return {
+    voice: { score: flat.voice, rationale: "" },
+    messaging: { score: flat.messaging, rationale: "" },
+    strategy: { score: flat.strategy, rationale: "" },
+  };
+}
+
+// The empty document: no copy, zeroed scores. `result` is never null — the
+// view always renders the document/scores shell, starting from this.
+function emptyReviewResult(): ReviewResult {
+  return {
+    originalCopy: "",
+    improvedCopy: "",
+    changes: [],
+    scorecard: zeroScorecard(),
+    improvedScorecard: null,
+    raw: "",
+  };
 }
 
 function stripInlineLensAnnotations(text: string): {
@@ -162,6 +200,7 @@ function deepExtractText(value: any, depth = 0): string {
 
 function extractFromMarkdown(text: string): ReviewResult {
   const result: ReviewResult = {
+    originalCopy: "",
     improvedCopy: "",
     changes: [],
     scorecard: {
@@ -301,6 +340,9 @@ function parseReviewResponse(response: any): ReviewResult {
   }
   if (structuredData?.improved_copy || structuredData?.scorecard) {
     return {
+      // Caller fills originalCopy (the copy it refined from); the agent's
+      // response only carries the improved copy + scores.
+      originalCopy: "",
       improvedCopy: structuredData.improved_copy || "",
       changes: Array.isArray(structuredData.changes)
         ? structuredData.changes.map((c: any) => ({
@@ -378,10 +420,11 @@ export default function ReviewSection({
   const { saveVersion, activeChat, activeChatId, activeVersionIndex } =
     useChatHistory();
   const brand = profile || emptyBrandProfile();
-  const [pastedCopy, setPastedCopy] = useState("");
   const [toneIntensity, setToneIntensity] = useState([5]);
   const [lengthPref, setLengthPref] = useState("Same");
-  const [result, setResult] = useState<ReviewResult | null>(null);
+  // The single source of truth for the document: original copy + refined copy +
+  // both scorecards. Never null — a fresh start is `emptyReviewResult()`.
+  const [result, setResult] = useState<ReviewResult>(emptyReviewResult());
   const [error, setError] = useState<string | null>(null);
   const [allAccepted, setAllAccepted] = useState(false);
   const [viewMode, setViewMode] = useState<"diff" | "refined" | "original">(
@@ -403,11 +446,10 @@ export default function ReviewSection({
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [lastNotes, setLastNotes] = useState<string[]>([]);
-  // The "Overall Brand Fit" rationale captured from a reopened version. null
-  // means "not reopened" → compute it live from the result via pickWhyThisMatters.
-  const [reopenOverallNote, setReopenOverallNote] = useState<string | null>(
-    null,
-  );
+  // The "Overall Brand Fit" rationale. A string (incl. "") is shown verbatim;
+  // null means "compute it live from the result via pickWhyThisMatters" (set
+  // after a fresh refine/rescore). Starts "" so the empty document shows none.
+  const [reopenOverallNote, setReopenOverallNote] = useState<string | null>("");
   // Confirm dialog shown when saving from a version that isn't the latest
   // (which would discard the newer "future" versions).
   const [confirmOverwriteOpen, setConfirmOverwriteOpen] = useState(false);
@@ -417,13 +459,6 @@ export default function ReviewSection({
   // "Already on-brand" banner doesn't fire when merely viewing a saved version
   // whose original/refined copy are identical).
   const [cameFromRefine, setCameFromRefine] = useState(false);
-  // Carryover from Compose: variant's lens scores shown as the "original" before the user clicks Refine.
-  // Once Refine returns, the agent's authoritative scorecard supersedes this for display.
-  const [presetOriginalScores, setPresetOriginalScores] = useState<{
-    voice: number;
-    messaging: number;
-    strategy: number;
-  } | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [noteDraft, setNoteDraft] = useState("");
   // Track rescoring operations so we can cancel them on discard
@@ -432,27 +467,36 @@ export default function ReviewSection({
 
   useEffect(() => {
     if (pendingCopy && pendingCopy.trim()) {
-      setPastedCopy(pendingCopy);
-      setResult(null);
       setError(null);
       setAllAccepted(false);
       setViewMode("diff");
-      setPresetOriginalScores(pendingScores ?? null);
       setNotes([]);
       setNoteDraft("");
       setCandidateCopy(null);
       setIsEditing(false);
       setJustSaved(false);
       setLastNotes([]);
-      setReopenOverallNote(null);
+      // No change rationales on a fresh handoff — show no overall rationale.
+      setReopenOverallNote("");
       setCameFromRefine(false);
+      // The handed-off copy is the document's original; nothing's refined yet,
+      // so improvedCopy mirrors it. Carryover scores (if any) become the
+      // original scorecard; there's no improved scorecard until a refine runs.
+      setResult({
+        originalCopy: pendingCopy,
+        improvedCopy: pendingCopy,
+        changes: [],
+        scorecard: pendingScores ? scorecardFromFlat(pendingScores) : zeroScorecard(),
+        improvedScorecard: null,
+        raw: pendingCopy,
+      });
       onPendingConsumed?.();
     }
   }, [pendingCopy, pendingScores, onPendingConsumed]);
 
-  // Hydrate the result view from a saved version's copy + scores + detail (so
-  // the reloaded/restored copy shows with its scores instead of the empty paste
-  // state). With no scores it falls back to the empty state with the copy filled.
+  // Hydrate the document from a saved version's copy + scores + detail, so the
+  // reloaded/restored copy shows with its scores. With no scores it shows the
+  // copy with zeroed scores.
   const hydrateFromVersion = useCallback(
     (v: {
       copy: string;
@@ -460,7 +504,6 @@ export default function ReviewSection({
       changes?: { text: string; lens: string }[];
       overallNote?: string;
     }) => {
-      setPastedCopy(v.copy);
       setError(null);
       setAllAccepted(false);
       setCandidateCopy(null);
@@ -471,28 +514,19 @@ export default function ReviewSection({
       setLastNotes([]);
       // Synthesized from a saved version — not a fresh refine pass.
       setCameFromRefine(false);
-      if (v.scores) {
-        const sc: Scorecard = {
-          voice: { score: v.scores.voice, rationale: "" },
-          messaging: { score: v.scores.messaging, rationale: "" },
-          strategy: { score: v.scores.strategy, rationale: "" },
-        };
-        setPresetOriginalScores(v.scores);
-        setReopenOverallNote(v.overallNote ?? "");
-        setViewMode("refined");
-        setResult({
-          improvedCopy: v.copy,
-          changes: v.changes ?? [],
-          scorecard: sc,
-          improvedScorecard: sc,
-          raw: v.copy,
-        });
-      } else {
-        setPresetOriginalScores(null);
-        setReopenOverallNote(null);
-        setViewMode("diff");
-        setResult(null);
-      }
+      setViewMode("refined");
+      // Verbatim overall rationale (incl. "" → none). Never recompute here.
+      setReopenOverallNote(v.overallNote ?? "");
+      const sc = v.scores ? scorecardFromFlat(v.scores) : zeroScorecard();
+      setResult({
+        originalCopy: v.copy,
+        improvedCopy: v.copy,
+        changes: v.changes ?? [],
+        scorecard: sc,
+        // A version with no saved scores reads 0 and has no improved side.
+        improvedScorecard: v.scores ? sc : null,
+        raw: v.copy,
+      });
     },
     [],
   );
@@ -531,36 +565,35 @@ export default function ReviewSection({
   useEffect(() => {
     const hadActiveChat = prevActiveChatRef.current !== null;
     const chatWasDeleted = hadActiveChat && !activeChat;
-    if (chatWasDeleted && (result || reopenedVersion)) {
-      setPastedCopy("");
-      setResult(null);
+    if (chatWasDeleted) {
+      // Back to the fresh empty document, in edit mode with zeroed scores.
+      setResult(emptyReviewResult());
       setError(null);
       setAllAccepted(false);
       setViewMode("refined");
-      setPresetOriginalScores(null);
       setNotes([]);
       setNoteDraft("");
       setCandidateCopy(null);
       setIsEditing(true);
       setJustSaved(false);
       setLastNotes([]);
-      setReopenOverallNote(null);
+      setReopenOverallNote("");
       setCameFromRefine(false);
     }
     prevActiveChatRef.current = activeChat;
-  }, [activeChat, result, pastedCopy, reopenedVersion]);
+  }, [activeChat, reopenedVersion]);
 
   // Refine the given copy. Iteration is cumulative: "Refine Again" passes the
   // latest improved copy as `baseline`, which becomes the new "original" the
   // agent works from (and the new diff/scorecard anchor) so improvements stack
-  // pass over pass. The first pass omits `baseline`, so it refines pastedCopy.
+  // pass over pass. With no `baseline`, it refines result.originalCopy.
   // baseline/notes are passed explicitly (not read from state) because setState
   // is async and wouldn't be flushed by the time we build the prompt.
   const handleRefine = async (opts?: {
     baseline?: string;
     notesOverride?: string[];
   }) => {
-    const sourceCopy = (opts?.baseline ?? pastedCopy).trim();
+    const sourceCopy = (opts?.baseline ?? result.originalCopy).trim();
     if (!sourceCopy) return;
     setError(null);
     setAllAccepted(false);
@@ -576,10 +609,8 @@ export default function ReviewSection({
     const prompt = `${buildBrandContextBlock(brand)}\nChannel: ${channel || "Non-Specific"}\nAudience: ${audience || "general"}\nTone Intensity: ${toneIntensity[0]}/10\nLength Preference: ${lengthPref}\n\nOriginal Copy:\n${sourceCopy}${notesBlock}\n\nReview and improve this copy. Return JSON with mode="review" and data containing: improved_copy (clean revised text only), changes (array of {lens, note} for each change), scorecard (for ORIGINAL), improved_scorecard (for the new refinement). Apply the scoring rules from your instructions: full 0-100 range, 85+ is a high bar, and the always-update + strict-greater rules when any original lens is below 85.`;
     const response = await onCallAgent(prompt);
     if (response) {
-      // Promote the refined-from copy to be the displayed original + diff anchor.
-      // No-op on the first pass (sourceCopy === pastedCopy).
-      setPastedCopy(sourceCopy);
-      setResult(parseReviewResponse(response));
+      // The refined-from copy becomes the displayed original + diff anchor.
+      setResult({ ...parseReviewResponse(response), originalCopy: sourceCopy });
       setNotes([]);
       setNoteDraft("");
       // A genuine refine pass — enables the "Already on-brand" banner when the
@@ -599,10 +630,10 @@ export default function ReviewSection({
 
   // Raw refined copy (markdown preserved, only lens annotations removed). Edit
   // mode shows this verbatim; preview mode renders it as markdown.
-  const cleanedImproved = useMemo(() => {
-    if (!result) return "";
-    return stripInlineLensAnnotations(result.improvedCopy).cleanText;
-  }, [result]);
+  const cleanedImproved = useMemo(
+    () => stripInlineLensAnnotations(result.improvedCopy).cleanText,
+    [result],
+  );
 
   // The copy that would be saved/refined-from: a manual override if the user
   // edited it, otherwise the agent's refined copy (both raw markdown).
@@ -611,8 +642,8 @@ export default function ReviewSection({
   // Markdown-stripped variants — used only by the word-diff / block-diff
   // comparison views (not the copy target) so symbols don't pollute the diff.
   const strippedOriginal = useMemo(
-    () => stripMarkdown(pastedCopy),
-    [pastedCopy],
+    () => stripMarkdown(result.originalCopy),
+    [result.originalCopy],
   );
   const strippedCandidate = useMemo(
     () => stripMarkdown(currentCandidate),
@@ -620,35 +651,20 @@ export default function ReviewSection({
   );
 
   const segments: DiffSegment[] = useMemo(() => {
-    if (!result || !cleanedImproved) return [];
+    if (!cleanedImproved) return [];
     return diffWords(strippedOriginal, strippedCandidate);
-  }, [strippedOriginal, strippedCandidate, cleanedImproved, result]);
+  }, [strippedOriginal, strippedCandidate, cleanedImproved]);
 
-  // Original scores: prefer the agent's authoritative scorecard from a completed Refine.
-  // If no Refine has run yet but we have carryover scores from Compose, use those.
-  const originalScores = useMemo(() => {
-    if (result) {
-      return {
-        voice: lensScore(result.scorecard.voice, "voice"),
-        messaging: lensScore(result.scorecard.messaging, "messaging"),
-        strategy: lensScore(result.scorecard.strategy, "strategy"),
-      };
-    }
-    if (presetOriginalScores) {
-      return {
-        voice: lensScore({ score: presetOriginalScores.voice }, "voice"),
-        messaging: lensScore(
-          { score: presetOriginalScores.messaging },
-          "messaging",
-        ),
-        strategy: lensScore(
-          { score: presetOriginalScores.strategy },
-          "strategy",
-        ),
-      };
-    }
-    return null;
-  }, [result, presetOriginalScores]);
+  // Scores of the ORIGINAL copy (the agent's scorecard, or carryover/zeroes for
+  // a not-yet-refined document). Always present, since `result` always is.
+  const originalScores = useMemo(
+    () => ({
+      voice: lensScore(result.scorecard.voice, "voice"),
+      messaging: lensScore(result.scorecard.messaging, "messaging"),
+      strategy: lensScore(result.scorecard.strategy, "strategy"),
+    }),
+    [result],
+  );
 
   // Improved scores: only available after the agent returns improved_scorecard.
   const improvedScores = useMemo(() => {
@@ -660,11 +676,10 @@ export default function ReviewSection({
     };
   }, [result]);
 
-  // The "Overall Brand Fit" rationale: the reopened note when present (incl. an
-  // empty string for compose-only chats), else computed live from the result.
-  const overallBody = result
-    ? (reopenOverallNote ?? pickWhyThisMatters(result, channel, audience))
-    : null;
+  // The "Overall Brand Fit" rationale: a stored note when present (incl. "" →
+  // none), else computed live from the result after a fresh refine/rescore.
+  const overallBody =
+    reopenOverallNote ?? pickWhyThisMatters(result, channel, audience);
 
   // Are we working from an earlier version? Saving would discard the newer ones.
   const versionsCount = activeChat?.versions?.length ?? 0;
@@ -757,15 +772,11 @@ export default function ReviewSection({
       if (sc) {
         // Reflect the edited copy's fresh score as the current ("improved")
         // score, and refresh the lens detail + overall rationale to match.
-        setResult((prev) =>
-          prev
-            ? {
-                ...prev,
-                improvedScorecard: sc,
-                changes: parsed.changes?.length ? parsed.changes : prev.changes,
-              }
-            : prev,
-        );
+        setResult((prev) => ({
+          ...prev,
+          improvedScorecard: sc,
+          changes: parsed.changes?.length ? parsed.changes : prev.changes,
+        }));
         setReopenOverallNote(null);
       }
     }
@@ -796,29 +807,25 @@ export default function ReviewSection({
           messaging: improvedScores.messaging.score,
           strategy: improvedScores.strategy.score,
         }
-      : originalScores
-        ? {
-            voice: originalScores.voice.score,
-            messaging: originalScores.messaging.score,
-            strategy: originalScores.strategy.score,
-          }
-        : null;
-    // Paste-started chat (no chat yet): capture the user's original pasted
-    // draft as version 0, scored with the pre-refine ("original") scores, so
-    // the timeline reads "your draft → refined". Skip when it matches the copy
+      : {
+          voice: originalScores.voice.score,
+          messaging: originalScores.messaging.score,
+          strategy: originalScores.strategy.score,
+        };
+    // Paste-started chat (no chat yet): capture the user's original copy as
+    // version 0, scored with the pre-refine ("original") scores, so the
+    // timeline reads "your draft → refined". Skip when it matches the copy
     // being saved (e.g. the agent made no changes).
-    const draft = pastedCopy.trim();
+    const draft = result.originalCopy.trim();
     const seed: ChatVersion | undefined =
       !activeChatId && draft && draft !== copy
         ? {
-            copy: pastedCopy,
-            scores: originalScores
-              ? {
-                  voice: originalScores.voice.score,
-                  messaging: originalScores.messaging.score,
-                  strategy: originalScores.strategy.score,
-                }
-              : null,
+            copy: result.originalCopy,
+            scores: {
+              voice: originalScores.voice.score,
+              messaging: originalScores.messaging.score,
+              strategy: originalScores.strategy.score,
+            },
             source: "draft",
             note: "",
             changes: [],
@@ -833,7 +840,7 @@ export default function ReviewSection({
         note: lastNotes.join(" | "),
         // Persist the per-lens rationale + overall note so the score detail and
         // "Overall Brand Fit" rationale re-render verbatim on reopen.
-        changes: result?.changes ?? [],
+        changes: result.changes,
         overallNote: overallBody ?? "",
       },
       seed,
@@ -845,9 +852,10 @@ export default function ReviewSection({
       // Saving commits the candidate — also lock the view to the accepted
       // (refined) copy. "Refine Again" resets allAccepted to reopen iteration.
       setAllAccepted(true);
-      // Update the baseline to the newly saved version so future comparisons
-      // are against this saved version, not the original pasted copy
-      setPastedCopy(currentCandidate.trim());
+      // Promote the just-saved copy to the new original/baseline, so future
+      // comparisons are against it rather than the pre-save original.
+      const saved = currentCandidate.trim();
+      setResult((prev) => ({ ...prev, originalCopy: saved }));
       setCandidateCopy(null);
     } else {
       setError("Failed to save to history. Please try again.");
@@ -855,19 +863,9 @@ export default function ReviewSection({
   };
 
   const originalOverall = useMemo(() => {
-    if (result) {
-      if (allAccepted) return null; // allAccepted shows the improved side only
-      return overallScore(result.scorecard);
-    }
-    if (presetOriginalScores) {
-      return overallScore({
-        voice: { score: presetOriginalScores.voice },
-        messaging: { score: presetOriginalScores.messaging },
-        strategy: { score: presetOriginalScores.strategy },
-      });
-    }
-    return null;
-  }, [result, presetOriginalScores, allAccepted]);
+    if (allAccepted) return null; // allAccepted shows the improved side only
+    return overallScore(result.scorecard);
+  }, [result, allAccepted]);
 
   const improvedOverall = useMemo(() => {
     if (allAccepted) return { score: 92, status: "on-brand" as const };
@@ -914,15 +912,20 @@ export default function ReviewSection({
       : null;
 
   const currentScores = toFlat(improvedScores) ?? toFlat(originalScores);
+  // The original scorecard is a meaningful "previous" only once an improved
+  // side exists (a refine/rescore ran). Before that — a fresh or handed-off
+  // document — there's no baseline, so don't show "from X/100".
   const previousScores: Flat | null = isDirty
-    ? (loadedVersionScores ?? toFlat(originalScores))
+    ? (loadedVersionScores ?? (improvedScores ? toFlat(originalScores) : null))
     : priorVersionScores;
 
   const currentOverall = improvedOverall?.score ?? originalOverall?.score;
   const previousOverall = isDirty
     ? loadedVersionScores
       ? overallFromFlat(loadedVersionScores)
-      : originalOverall?.score
+      : improvedScores
+        ? originalOverall?.score
+        : undefined
     : overallFromFlat(priorVersionScores);
 
   // Group the agent's per-change rationales by lens, so the new right-margin
@@ -934,7 +937,7 @@ export default function ReviewSection({
       messaging: [],
       strategy: [],
     };
-    for (const c of result?.changes ?? []) {
+    for (const c of result.changes) {
       const lens = (c.lens || "voice").toLowerCase();
       if (lens === "voice" || lens === "messaging" || lens === "strategy") {
         if (c.text?.trim()) groups[lens].push(c.text.trim());
@@ -948,7 +951,8 @@ export default function ReviewSection({
   const useBlockDiff = ratio > 0.6;
 
   // Check if refined copy differs from original and if user has made actual edits
-  const refinedIsDifferent = cleanedImproved.trim() !== pastedCopy.trim();
+  const refinedIsDifferent =
+    cleanedImproved.trim() !== result.originalCopy.trim();
   const userHasActuallyEdited =
     candidateCopy !== null && candidateCopy.trim() !== cleanedImproved.trim();
   const shouldDisableRefinedButtons =
@@ -1088,11 +1092,11 @@ export default function ReviewSection({
                   // edits). Fall back to the source copy on the first pass,
                   // when nothing has been refined/edited yet.
                   handleRefine({
-                    baseline: currentCandidate || pastedCopy,
+                    baseline: currentCandidate || result.originalCopy,
                     notesOverride: trimmed ? [trimmed] : [],
                   });
                 }}
-                disabled={isEditing || !(currentCandidate || pastedCopy).trim()}
+                disabled={isEditing || !(currentCandidate || result.originalCopy).trim()}
                 className="h-10 px-5 inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <span>Refine Copy</span>
@@ -1298,9 +1302,12 @@ export default function ReviewSection({
                         rescoringIdRef.current++;
                         // Edit works even after a save/accept: editing the
                         // already-accepted copy starts a fresh override candidate
-                        // the user can save as a new version.
+                        // the user can save as a new version. originalCopy is the
+                        // fallback for a not-yet-refined (handed-off) document.
                         if (candidateCopy == null)
-                          setCandidateCopy(currentCandidate);
+                          setCandidateCopy(
+                            currentCandidate || result.originalCopy,
+                          );
                         setAllAccepted(false);
                         setViewMode("refined");
                         setIsEditing(true);
@@ -1381,14 +1388,14 @@ export default function ReviewSection({
                           />
                         ) : (
                           <MarkdownText
-                            text={currentCandidate || pastedCopy}
+                            text={currentCandidate || result.originalCopy}
                             className="text-studio-ink text-base leading-relaxed"
                           />
                         ))}
 
                       {effectiveMode === "original" && (
                         <MarkdownText
-                          text={pastedCopy}
+                          text={result.originalCopy}
                           className="text-studio-ink text-base leading-relaxed"
                         />
                       )}
@@ -1442,7 +1449,7 @@ export default function ReviewSection({
                         ) : (
                           // 0 changes: show the copy plainly under the celebration banner above
                           <MarkdownText
-                            text={currentCandidate || pastedCopy}
+                            text={currentCandidate || result.originalCopy}
                             className="text-studio-ink text-base leading-relaxed"
                           />
                         ))}
