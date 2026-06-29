@@ -687,9 +687,6 @@ export default function WriteSection({
       <div className="flex flex-col">
         <div className="flex items-baseline justify-between gap-3">
           <StepEyebrow step={2} label="Preview Generated Copy" />
-          <p className="italic text-xs text-studio-mutedSoft mb-3">
-            Use the buttons below the card to navigate options
-          </p>
         </div>
         <section className="bg-studio-card rounded-2xl border border-studio-border p-4 lg:p-5 flex flex-row items-stretch flex-1 gap-3">
           {/* Left arrow */}
@@ -752,6 +749,7 @@ export default function WriteSection({
                       key={activeVariant.differentiator || safeIndex}
                       index={safeIndex}
                       variation={activeVariant}
+                      numVariants={enrichedVariations.length}
                       mandatories={mandatories}
                       onSendToRefine={() => {
                         // Save the selected variant as V1 when sending to Refine.
@@ -842,6 +840,7 @@ type EnrichedVariation = Variation & {
 function VariantCard({
   index,
   variation,
+  numVariants,
   mandatories,
   onSendToRefine,
   onCopy,
@@ -851,6 +850,7 @@ function VariantCard({
 }: {
   index: number;
   variation: EnrichedVariation;
+  numVariants: number;
   mandatories: string[];
   onSendToRefine: () => void;
   onCopy: () => void;
@@ -859,6 +859,7 @@ function VariantCard({
   regenerating: boolean;
 }) {
   const labelNum = String(index + 1).padStart(2, "0");
+  const numVariantsLabelNum = String(numVariants).padStart(2, "0");
   const diff = variation.differentiator || "Variation";
 
   // Email-format split: pull "Subject: ..." into a headline, the rest into body.
@@ -886,7 +887,7 @@ function VariantCard({
       {/* Top row: variant pill + descriptor meta */}
       <header className="flex items-baseline justify-between gap-3 mb-4">
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-studio-page border border-studio-border text-xs font-bold text-studio-ink">
-          Variant {labelNum}
+          Variant {labelNum} of {numVariantsLabelNum}
         </span>
         <div className="text-xs text-studio-muted">
           <span className="italic">{diff}</span>
@@ -959,8 +960,9 @@ function VariantCard({
       </div>
 
       {/* Footer actions */}
-      <footer className="grid grid-cols-3 items-center gap-2 pt-3 border-t border-studio-border text-xs text-studio-muted">
-        <ActionBtn
+      <footer className="grid grid-cols-2 items-center gap-2 pt-3 border-t border-studio-border text-xs text-studio-muted">
+        {/* Disabling Regenerate button as per Chan's request. Leaving the code in here in case Creative team wants it back. */}
+        {/* <ActionBtn
           className="justify-self-start"
           icon={
             regenerating ? (
@@ -972,15 +974,9 @@ function VariantCard({
           label={regenerating ? "Regenerating…" : "Regenerate"}
           onClick={onRegenerate}
           disabled={regenerating}
-        />
+        /> */}
         <ActionBtn
-          className="justify-self-center"
-          icon={<ArrowUpRight className="h-3 w-3" />}
-          label="Send to Refine"
-          onClick={onSendToRefine}
-        />
-        <ActionBtn
-          className="justify-self-end"
+          className="justify-self-start"
           icon={
             copied ? (
               <Check className="h-3 w-3" />
@@ -991,6 +987,22 @@ function VariantCard({
           label={copied ? "Copied" : "Copy"}
           onClick={onCopy}
         />
+        {/* <ActionBtn
+          className="justify-self-end"
+          icon={<ArrowUpRight className="h-3 w-3" />}
+          label="Satisfied? Send to Refine"
+          onClick={onSendToRefine}
+        /> */}
+
+        {/* Using this button to emphasise next step of sending to Refine. */}
+        <button
+          type="button"
+          onClick={onSendToRefine}
+          className="h-10 px-5 mt-3 justify-self-end inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-studio-ink text-studio-page hover:bg-studio-muted disabled:opacity-50  transition-colors"
+        >
+          <span>Continue to Refine</span>
+          <ArrowRight className="h-4 w-4" />
+        </button>
       </footer>
     </article>
   );
