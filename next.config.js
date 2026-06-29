@@ -1,13 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  output: "standalone",
 
   // The app is loaded inside an iframe served from a different subdomain
   // (preview--*.app.architect.new). Next.js 15.2+ blocks /_next/* dev resources
   // from cross-origin callers by default — including the static JS chunks
   // needed for hydration. Without this allowlist the page renders the SSR HTML
   // but never hydrates, so every button feels dead.
-  allowedDevOrigins: ['*.architect.new', '*.app.architect.new', '*'],
+  allowedDevOrigins: ["*.architect.new", "*.app.architect.new", "*"],
 
   // Keep compiled pages in memory longer in dev (default: 15s → 1 hour)
   onDemandEntries: {
@@ -36,37 +36,37 @@ const nextConfig = {
   experimental: {
     // Optimize package imports for faster builds
     optimizePackageImports: [
-      'lucide-react',
-      '@radix-ui/react-accordion',
-      '@radix-ui/react-alert-dialog',
-      '@radix-ui/react-aspect-ratio',
-      '@radix-ui/react-avatar',
-      '@radix-ui/react-checkbox',
-      '@radix-ui/react-collapsible',
-      '@radix-ui/react-context-menu',
-      '@radix-ui/react-dialog',
-      '@radix-ui/react-dropdown-menu',
-      '@radix-ui/react-hover-card',
-      '@radix-ui/react-label',
-      '@radix-ui/react-menubar',
-      '@radix-ui/react-navigation-menu',
-      '@radix-ui/react-popover',
-      '@radix-ui/react-progress',
-      '@radix-ui/react-radio-group',
-      '@radix-ui/react-scroll-area',
-      '@radix-ui/react-select',
-      '@radix-ui/react-separator',
-      '@radix-ui/react-slider',
-      '@radix-ui/react-slot',
-      '@radix-ui/react-switch',
-      '@radix-ui/react-tabs',
-      '@radix-ui/react-toggle',
-      '@radix-ui/react-toggle-group',
-      '@radix-ui/react-tooltip',
-      'recharts',
-      'date-fns',
+      "lucide-react",
+      "@radix-ui/react-accordion",
+      "@radix-ui/react-alert-dialog",
+      "@radix-ui/react-aspect-ratio",
+      "@radix-ui/react-avatar",
+      "@radix-ui/react-checkbox",
+      "@radix-ui/react-collapsible",
+      "@radix-ui/react-context-menu",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-hover-card",
+      "@radix-ui/react-label",
+      "@radix-ui/react-menubar",
+      "@radix-ui/react-navigation-menu",
+      "@radix-ui/react-popover",
+      "@radix-ui/react-progress",
+      "@radix-ui/react-radio-group",
+      "@radix-ui/react-scroll-area",
+      "@radix-ui/react-select",
+      "@radix-ui/react-separator",
+      "@radix-ui/react-slider",
+      "@radix-ui/react-slot",
+      "@radix-ui/react-switch",
+      "@radix-ui/react-tabs",
+      "@radix-ui/react-toggle",
+      "@radix-ui/react-toggle-group",
+      "@radix-ui/react-tooltip",
+      "recharts",
+      "date-fns",
     ],
   },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
